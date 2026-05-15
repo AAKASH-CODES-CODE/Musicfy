@@ -54,8 +54,8 @@ function skeletonCards(count = 4) {
 function trackListItem(track, index) {
   const dur = track.duration_ms ? formatDuration(track.duration_ms) : '';
   // Title aur artist me quotes handle karne ke liye
-  const safeTitle = (track.title || '').replace(/'/g, "\'").replace(/"/g, '\"');
-  const safeArtist = (track.artist || '').replace(/'/g, "\'").replace(/"/g, '\"');
+  const safeTitle = (track.title || '').replace(/'/g, "\\'").replace(/"/g, '\\"');
+  const safeArtist = (track.artist || '').replace(/'/g, "\\'").replace(/"/g, '\\"');
 
   return `
     <div class="list-item" onclick="playSong('${track.id}', '${safeTitle}', '${safeArtist}', '${track.thumb}')">
@@ -75,13 +75,21 @@ function trackListItem(track, index) {
 // ── Scroll card HTML ───────────────────────────
 function scrollCard(item) {
   const sub = item.artist || item.owner || '';
+  
+  // Quotes handle karne ke liye
+  const safeTitle = (item.title || item.name || '').replace(/'/g, "\\'").replace(/"/g, '\\"');
+  const safeArtist = (item.artist || '').replace(/'/g, "\\'").replace(/"/g, '\\"');
+  
+  // Agar item me artist hai (matlab song hai), tabhi click par play hoga
+  const clickAction = item.artist ? `onclick="playSong('${item.id}', '${safeTitle}', '${safeArtist}', '${item.thumb}')"` : '';
+
   return `
-    <div class="scroll-card" data-id="${item.id}">
+    <div class="scroll-card" ${clickAction}>
       <div class="card-img-wrap">
         <img src="${item.thumb || 'https://placehold.co/150x150/242424/a7a7a7?text=♪'}"
-             alt="${item.title || item.name}" loading="lazy"
+             alt="${safeTitle}" loading="lazy"
              onerror="this.src='https://placehold.co/150x150/242424/a7a7a7?text=♪'">
-        <div class="card-play-btn"><i class="fas fa-play"></i></div>
+        ${item.artist ? `<div class="card-play-btn"><i class="fas fa-play"></i></div>` : ''}
       </div>
       <div class="card-title">${item.title || item.name}</div>
       ${sub ? `<div class="card-sub">${sub}</div>` : ''}
