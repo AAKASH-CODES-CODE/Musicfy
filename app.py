@@ -3,6 +3,7 @@ import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth
 import os
 import time
+import requests as req
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -220,57 +221,84 @@ def home_music():
         return jsonify({"success": False, "error": str(e)})
 
 
+def _spotify_search(access_token, query, search_type, limit):
+    """Direct HTTP call to Spotify — bypasses spotipy quirks completely."""
+    r = req.get(
+        "https://api.spotify.com/v1/search",
+        params={"q": query, "type": search_type, "limit": limit, "market": "US"},
+        headers={"Authorization": f"Bearer {access_token}"},
+        timeout=8
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 @app.route("/api/search")
 def search_music():
     query = request.args.get("q", "").strip()
     if not query:
         return jsonify({"success": False, "error": "No query provided"})
 
-    # Spotify restricted track/artist search to OAuth tokens only (late 2024 API change)
-    # Use user token if logged in, otherwise ask them to connect
-    sp = get_user_client()
-    if not sp:
+    # Spotify restricted search to OAuth tokens — need user to be logged in
+    token_info = session.get("token_info")
+    if not token_info:
         return jsonify({
             "success": False,
             "login_required": True,
             "error": "Please connect your Spotify account to search songs"
         })
 
+    # Refresh token if expired
+    now = int(time.time())
+    if token_info.get("expires_at", 0) - now < 60:
+        sp_oauth = SpotifyOAuth(
+            client_id=SPOTIFY_CLIENT_ID,
+            client_secret=SPOTIFY_CLIENT_SECRET,
+            redirect_uri=REDIRECT_URI,
+            scope="user-library-read user-top-read user-read-recently-played"
+        )
+        try:
+            token_info = sp_oauth.refresh_access_token(token_info["refresh_token"])
+            session["token_info"] = token_info
+        except Exception:
+            session.clear()
+            return jsonify({"success": False, "login_required": True, "error": "Session expired, please reconnect"})
+
+    access_token = token_info["access_token"]
+
     try:
-        track_results = sp.search(q=query, limit=15, type="track", market="US")
-        artist_results = sp.search(q=query, limit=4, type="artist", market="US")
+        track_data   = _spotify_search(access_token, query, "track", 15)
+        artist_data  = _spotify_search(access_token, query, "artist", 4)
 
         tracks = []
-        for track in track_results["tracks"]["items"]:
+        for track in track_data.get("tracks", {}).get("items", []):
             images = track["album"]["images"]
-            thumb = images[0]["url"] if images else ""
             tracks.append({
-                "title": track["name"],
-                "artist": ", ".join(a["name"] for a in track["artists"]),
-                "thumb": thumb,
-                "id": track["id"],
+                "title":       track["name"],
+                "artist":      ", ".join(a["name"] for a in track["artists"]),
+                "thumb":       images[0]["url"] if images else "",
+                "id":          track["id"],
                 "duration_ms": track["duration_ms"],
-                "album": track["album"]["name"],
-                "type": "track"
+                "album":       track["album"]["name"],
+                "type":        "track"
             })
 
         artists = []
-        for artist in artist_results["artists"]["items"]:
+        for artist in artist_data.get("artists", {}).get("items", []):
             images = artist.get("images", [])
-            thumb = images[0]["url"] if images else ""
             artists.append({
-                "name": artist["name"],
-                "thumb": thumb,
-                "id": artist["id"],
+                "name":      artist["name"],
+                "thumb":     images[0]["url"] if images else "",
+                "id":        artist["id"],
                 "followers": artist.get("followers", {}).get("total", 0),
-                "type": "artist"
+                "type":      "artist"
             })
 
-        return jsonify({
-            "success": True,
-            "results": tracks,
-            "artists": artists
-        })
+        return jsonify({"success": True, "results": tracks, "artists": artists})
+
+    except req.exceptions.HTTPError as e:
+        code = e.response.status_code if e.response is not None else 0
+        return jsonify({"success": False, "error": f"Spotify API error {code}"})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
