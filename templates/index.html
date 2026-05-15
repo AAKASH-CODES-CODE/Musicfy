@@ -1,1 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Spotify Clone</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        body { background-color: #121212; color: #ffffff; }
+        .skeleton {
+            background: #2a2a2a;
+            animation: pulse 1.5s infinite ease-in-out;
+            border-radius: 4px;
+        }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
+        .page-section { display: none; padding-top: 10px; }
+        .page-section.active { display: block; }
+        .nav-item.active { color: #ffffff; }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <header class="top-header" id="main-header">
+            <div class="profile-icon">A</div>
+            <div class="header-filters">
+                <span class="filter-pill active" style="background-color: #1ed760; color: black;">All</span>
+                <span class="filter-pill">Music</span>
+                <span class="filter-pill">Podcasts</span>
+            </div>
+        </header>
 
+        <main class="main-content">
+            <div id="home-page" class="page-section active">
+                <p class="jump-text">Jump into a session based on your tastes</p>
+                <h1 class="section-title" style="margin-top: 4px; margin-bottom: 16px;">Start listening</h1>
+                
+                <div class="list-container" id="api-start-listening">
+                    <div class="list-item"><div class="skeleton" style="width: 55px; height: 55px;"></div><div class="item-info"><div class="skeleton" style="width: 60%; height: 16px; margin-bottom: 8px;"></div><div class="skeleton" style="width: 40%; height: 12px;"></div></div></div>
+                    <div class="list-item"><div class="skeleton" style="width: 55px; height: 55px;"></div><div class="item-info"><div class="skeleton" style="width: 70%; height: 16px; margin-bottom: 8px;"></div><div class="skeleton" style="width: 50%; height: 12px;"></div></div></div>
+                </div>
+
+                <h2 class="section-title" style="margin-top: 30px;">Recommended for today</h2>
+                
+                <div class="horizontal-scroll" id="api-recommended">
+                    <div class="scroll-card"><div class="skeleton" style="width: 150px; height: 150px;"></div><div class="skeleton" style="width: 100px; height: 14px; margin-top: 8px;"></div></div>
+                    <div class="scroll-card"><div class="skeleton" style="width: 150px; height: 150px;"></div><div class="skeleton" style="width: 120px; height: 14px; margin-top: 8px;"></div></div>
+                </div>
+            </div>
+
+            <div id="search-page" class="page-section"><h1 class="section-title">Search</h1></div>
+            <div id="library-page" class="page-section"><h1 class="section-title">Your Library</h1></div>
+            <div id="premium-page" class="page-section"><h1 class="section-title">Premium</h1></div>
+            <div id="create-page" class="page-section"><h1 class="section-title">Create</h1></div>
+            <div class="bottom-spacer"></div>
+        </main>
+
+        <nav class="bottom-nav">
+            <div class="nav-item active" onclick="switchTab('home-page', this)"><i class="fas fa-home"></i><span>Home</span></div>
+            <div class="nav-item" onclick="switchTab('search-page', this)"><i class="fas fa-search"></i><span>Search</span></div>
+            <div class="nav-item" onclick="switchTab('library-page', this)"><i class="fas fa-swatchbook"></i><span>Your Library</span></div>
+            <div class="nav-item" onclick="switchTab('premium-page', this)"><i class="fab fa-spotify"></i><span>Premium</span></div>
+            <div class="nav-item" onclick="switchTab('create-page', this)"><i class="fas fa-plus"></i><span>Create</span></div>
+        </nav>
+    </div>
+
+    <script>
+        function switchTab(targetPageId, clickedButton) {
+            document.querySelectorAll('.page-section').forEach(page => page.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(targetPageId).classList.add('active');
+            clickedButton.classList.add('active');
+            document.getElementById('main-header').style.display = (targetPageId === 'home-page') ? 'flex' : 'none';
+        }
+
+        async function fetchYouTubeMusic() {
+            try {
+                const response = await fetch('/api/home_music');
+                const data = await response.json();
+                
+                if(data.success) {
+                    const startContainer = document.getElementById('api-start-listening');
+                    startContainer.innerHTML = ''; 
+                    data.start_listening.forEach(song => {
+                        let title = song.title;
+                        let artist = song.artists ? song.artists.map(a => a.name).join(', ') : 'Unknown';
+                        let thumb = song.thumbnails && song.thumbnails.length > 0 ? song.thumbnails[song.thumbnails.length - 1].url : 'https://via.placeholder.com/55';
+                        startContainer.innerHTML += `<div class="list-item"><img src="${thumb}" alt="Cover" style="width: 55px; height: 55px; border-radius: 4px; object-fit: cover;"><div class="item-info"><div class="item-title">${title}</div><div class="item-subtitle">${artist}</div></div><i class="fas fa-ellipsis-v options-icon"></i></div>`;
+                    });
+
+                    const recContainer = document.getElementById('api-recommended');
+                    recContainer.innerHTML = ''; 
+                    data.recommended.forEach(song => {
+                        let title = song.title;
+                        let thumb = song.thumbnails && song.thumbnails.length > 0 ? song.thumbnails[song.thumbnails.length - 1].url : 'https://via.placeholder.com/150';
+                        recContainer.innerHTML += `<div class="scroll-card"><img src="${thumb}" alt="Cover" style="width: 150px; height: 150px; border-radius: 8px; object-fit: cover;"><div class="card-title" style="margin-top: 8px; color: var(--text-subdued); font-size: 13px; font-weight: 500;">${title}</div></div>`;
+                    });
+                }
+            } catch (error) {
+                console.error("Music API Error:", error);
+            }
+        }
+        document.addEventListener('DOMContentLoaded', fetchYouTubeMusic);
+    </script>
+</body>
+</html>
