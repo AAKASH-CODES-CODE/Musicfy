@@ -5,16 +5,27 @@ from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth
 import os
 
 app = Flask(__name__)
-app.secret_key = "any-random-string-for-session" # Zaruri hai session ke liye
+app.secret_key = "musicfy-super-secret-key"
 
 yt = YTMusic()
 
-SPOTIFY_CLIENT_ID = '46ce8700cbcb4a739423feab1f207455'
-SPOTIFY_CLIENT_SECRET = 'aae5cab476fd44719ba0fdd3c0dac53f'
-# Is link ko apne asli Render link se replace kar sakte hain
-REDIRECT_URI = 'https://' + os.environ.get('RENDER_EXTERNAL_HOSTNAME', 'localhost:5000') + '/callback'
+SPOTIFY_CLIENT_ID = os.environ.get('SPOTIPY_CLIENT_ID', '46ce8700cbcb4a739423feab1f207455')
+SPOTIFY_CLIENT_SECRET = os.environ.get('SPOTIPY_CLIENT_SECRET', 'aae5cab476fd44719ba0fdd3c0dac53f')
+# Aapka actual render link
+REDIRECT_URI = 'https://musicfy-adze.onrender.com/callback'
 
-# 1. Login Route: User ko Spotify ke login page par bhejne ke liye
+# Global Search ke liye Spotify
+sp_public = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
+    client_id=SPOTIFY_CLIENT_ID,
+    client_secret=SPOTIFY_CLIENT_SECRET
+))
+
+@app.route('/')
+def index():
+    # Frontend ko bata rahe hain ki user login hai ya nahi
+    logged_in = "token_info" in session
+    return render_template('index.html', logged_in=logged_in)
+
 @app.route('/login')
 def login():
     scope = "user-library-read user-top-read"
@@ -23,7 +34,6 @@ def login():
     auth_url = sp_oauth.get_authorize_url()
     return redirect(auth_url)
 
-# 2. Callback Route: Login ke baad wapas aane ke liye
 @app.route('/callback')
 def callback():
     sp_oauth = SpotifyOAuth(client_id=SPOTIFY_CLIENT_ID, client_secret=SPOTIFY_CLIENT_SECRET, 
@@ -34,43 +44,68 @@ def callback():
     session["token_info"] = token_info
     return redirect(url_for('index'))
 
-# 3. Personal Music API: User ke taste ke gaane nikalna
+# --- NAYA LOGOUT ROUTE ---
+@app.route('/logout')
+def logout():
+    session.clear() # User ka data memory se delete kar diya
+    return redirect(url_for('index'))
+
 @app.route('/api/user_music')
 def user_music():
     if "token_info" not in session:
         return jsonify({"success": False, "message": "Not logged in"})
-    
     try:
         token_info = session.get("token_info")
         sp_user = spotipy.Spotify(auth=token_info['access_token'])
-        # User ke top 6 gaane nikal rahe hain
         results = sp_user.current_user_top_tracks(limit=6, time_range='short_term')
-        
         tracks = []
         for track in results['items']:
             tracks.append({
                 "title": track['name'],
                 "artist": track['artists'][0]['name'],
-                "thumb": track['album']['images'][0]['url']
+                "thumb": track['album']['images'][0]['url'] if track['album']['images'] else "https://via.placeholder.com/150"
             })
         return jsonify({"success": True, "tracks": tracks})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
-# --- Purana Search aur Home API (Waisa hi rahega) ---
-@app.route('/')
-def index():
-    logged_in = "token_info" in session
-    return render_template('index.html', logged_in=logged_in)
+@app.route('/api/home_music')
+def home_music():
+    try:
+        charts = yt.get_charts(country='IN')
+        trending_videos = charts.get('videos', {}).get('items', [])[:4]
+        recommended_songs = yt.search("haryanvi pop hits", filter="songs", limit=4)
+        return jsonify({
+            "success": True,
+            "start_listening": trending_videos,
+            "recommended": recommended_songs
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
 
+# --- FIX KIYA HUA SEARCH ROUTE ---
 @app.route('/api/search')
 def search_music():
-    # ... (Pichla Spotify search code yahan rahega) ...
-    sp_public = spotipy.Spotify(auth_manager=SpotifyClientCredentials(client_id=SPOTIFY_CLIENT_ID, client_secret=SPOTIFY_CLIENT_SECRET))
     query = request.args.get('q')
-    results = sp_public.search(q=query, limit=10, type='track', market='IN')
-    # ... (Baki logic wahi hai) ...
-    return jsonify({"success": True, "results": []}) # (Cleaned results yahan aayenge)
+    if not query:
+        return jsonify({"success": False, "error": "No query provided"})
+    try:
+        results = sp_public.search(q=query, limit=10, type='track', market='IN')
+        tracks = results['tracks']['items']
+        cleaned_results = []
+        for track in tracks:
+            title = track['name']
+            artists = [{"name": artist['name']} for artist in track['artists']]
+            thumb_url = track['album']['images'][0]['url'] if track['album']['images'] else "https://via.placeholder.com/55"
+            cleaned_results.append({
+                "title": title,
+                "artists": artists,
+                "thumbnails": [{"url": thumb_url}],
+                "id": track['id']
+            })
+        return jsonify({"success": True, "results": cleaned_results})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
