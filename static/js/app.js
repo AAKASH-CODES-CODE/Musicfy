@@ -53,8 +53,12 @@ function skeletonCards(count = 4) {
 // ── Track list item HTML ───────────────────────
 function trackListItem(track, index) {
   const dur = track.duration_ms ? formatDuration(track.duration_ms) : '';
+  // Title aur artist me quotes handle karne ke liye
+  const safeTitle = (track.title || '').replace(/'/g, "\'").replace(/"/g, '\"');
+  const safeArtist = (track.artist || '').replace(/'/g, "\'").replace(/"/g, '\"');
+
   return `
-    <div class="list-item" data-id="${track.id}">
+    <div class="list-item" onclick="playSong('${track.id}', '${safeTitle}', '${safeArtist}', '${track.thumb}')">
       <div class="track-num">${index + 1}</div>
       <img src="${track.thumb || 'https://placehold.co/55x55/242424/a7a7a7?text=♪'}"
            alt="Cover" class="track-thumb" loading="lazy"
@@ -278,4 +282,85 @@ document.addEventListener('DOMContentLoaded', () => {
   fetchUserMusic();
   initSearch();
   initFilterPills();
+});
+
+
+// ── MUSIC PLAYER LOGIC ────────────────────────────
+let currentAudio = new Audio();
+let isPlaying = false;
+
+function togglePlayer() {
+  $('music-player').classList.toggle('active');
+}
+
+async function playSong(id, title, artist, thumb) {
+  // Player ko upar laao aur details set karo
+  $('music-player').classList.add('active');
+  $('player-title').innerText = title;
+  $('player-artist').innerText = artist;
+  $('player-thumb').src = thumb;
+  
+  // Spinner chalu karo loading ke time
+  $('play-icon').className = 'fas fa-spinner fa-spin';
+  $('player-thumb').classList.remove('playing');
+
+  try {
+    // JioSaavn ke gaane ka high-quality mp4 URL nikalne ke liye Public API
+    const res = await fetch(`https://saavn.dev/api/songs?ids=${id}`);
+    const data = await res.json();
+
+    if (data.success && data.data.length > 0) {
+      const downloadLinks = data.data[0].downloadUrl;
+      const audioUrl = downloadLinks[downloadLinks.length - 1].url; // Highest Quality
+
+      currentAudio.src = audioUrl;
+      currentAudio.play();
+      isPlaying = true;
+
+      // Play icon aur spinning animation chalu
+      $('play-icon').className = 'fas fa-pause';
+      $('player-thumb').classList.add('playing');
+    } else {
+      alert("Oops! Gaana load nahi ho paya.");
+      $('play-icon').className = 'fas fa-play';
+    }
+  } catch (err) {
+    console.error("Audio Fetch Error:", err);
+    alert("Network error.");
+    $('play-icon').className = 'fas fa-play';
+  }
+}
+
+// Play/Pause Button Logic
+function togglePlay() {
+  if (!currentAudio.src) return;
+  if (isPlaying) {
+    currentAudio.pause();
+    $('play-icon').className = 'fas fa-play';
+    $('player-thumb').classList.remove('playing');
+  } else {
+    currentAudio.play();
+    $('play-icon').className = 'fas fa-pause';
+    $('player-thumb').classList.add('playing');
+  }
+  isPlaying = !isPlaying;
+}
+
+// Progress Bar Update Logic
+currentAudio.addEventListener('timeupdate', () => {
+  if (currentAudio.duration) {
+    const progressPercent = (currentAudio.currentTime / currentAudio.duration) * 100;
+    $('progress-bar').style.width = `${progressPercent}%`;
+    
+    // Time format update
+    let currentMin = Math.floor(currentAudio.currentTime / 60);
+    let currentSec = Math.floor(currentAudio.currentTime % 60);
+    if(currentSec < 10) currentSec = `0${currentSec}`;
+    $('current-time').innerText = `${currentMin}:${currentSec}`;
+
+    let totalMin = Math.floor(currentAudio.duration / 60);
+    let totalSec = Math.floor(currentAudio.duration % 60);
+    if(totalSec < 10) totalSec = `0${totalSec}`;
+    $('total-time').innerText = `${totalMin}:${totalSec}`;
+  }
 });
