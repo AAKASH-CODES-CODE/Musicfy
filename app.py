@@ -75,14 +75,31 @@ def user_music():
 @app.route('/api/home_music')
 def home_music():
     try:
-        charts = yt.get_charts(country='IN')
-        trending_videos = charts.get('videos', {}).get('items', [])[:4]
-        recommended_songs = yt.search("haryanvi pop hits", filter="songs", limit=4)
+        # 1. Start Listening (Spotify New Releases in India)
+        new_releases = sp_public.new_releases(country='IN', limit=4)['albums']['items']
+        start_listening = []
+        for album in new_releases:
+            thumb = album['images'][0]['url'] if album['images'] else "https://via.placeholder.com/55"
+            start_listening.append({
+                "title": album['name'],
+                "artists": [{"name": artist['name']} for artist in album['artists']],
+                "thumbnails": [{"url": thumb}]
+            })
+        
+        # 2. Recommended (Spotify Featured Playlists in India)
+        featured = sp_public.featured_playlists(country='IN', limit=4)['playlists']['items']
+        recommended = []
+        for pl in featured:
+            thumb = pl['images'][0]['url'] if pl['images'] else "https://via.placeholder.com/150"
+            recommended.append({
+                "title": pl['name'],
+                "thumbnails": [{"url": thumb}]
+            })
         
         return jsonify({
             "success": True,
-            "start_listening": trending_videos,
-            "recommended": recommended_songs
+            "start_listening": start_listening,
+            "recommended": recommended
         })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
