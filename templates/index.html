@@ -1,157 +1,232 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Spotify Clone</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="/static/css/style.css">
-    <style>
-        body { background-color: #121212; color: #ffffff; }
-        .skeleton {
-            background: #2a2a2a;
-            animation: pulse 1.5s infinite ease-in-out;
-            border-radius: 4px;
-        }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
-        .page-section { display: none; padding-top: 10px; }
-        .page-section.active { display: block; }
-        .nav-item.active { color: #ffffff; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#0d0d0d">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Musicfy</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <link rel="stylesheet" href="/static/css/style.css">
 </head>
 <body>
-    <div class="app-container">
-        <header class="top-header" id="main-header">
-            <div class="profile-icon">A</div>
-            <div class="header-filters">
-                <span class="filter-pill active" style="background-color: #1ed760; color: black;">All</span>
-                <span class="filter-pill">Music</span>
-                <span class="filter-pill">Podcasts</span>
-            </div>
-        </header>
+<div class="app-container">
 
-        <main class="main-content">
-            <div id="home-page" class="page-section active">
-                <p class="jump-text">Jump into a session based on your tastes</p>
-
-                <div id="spotify-user-section" style="display: none;">
-                    <h2 class="section-title" style="margin-top: 10px; margin-bottom: 16px;">Made for You</h2>
-                    <div class="horizontal-scroll" id="api-user-tracks">
-                        </div>
-                </div>
-
-                <h1 class="section-title" style="margin-top: 20px; margin-bottom: 16px;">Start listening</h1>
-                
-                <div class="list-container" id="api-start-listening">
-                    <div class="list-item"><div class="skeleton" style="width: 55px; height: 55px;"></div><div class="item-info"><div class="skeleton" style="width: 60%; height: 16px; margin-bottom: 8px;"></div><div class="skeleton" style="width: 40%; height: 12px;"></div></div></div>
-                    <div class="list-item"><div class="skeleton" style="width: 55px; height: 55px;"></div><div class="item-info"><div class="skeleton" style="width: 70%; height: 16px; margin-bottom: 8px;"></div><div class="skeleton" style="width: 50%; height: 12px;"></div></div></div>
-                </div>
-
-                <h2 class="section-title" style="margin-top: 30px;">Recommended for today</h2>
-                
-                <div class="horizontal-scroll" id="api-recommended">
-                    <div class="scroll-card"><div class="skeleton" style="width: 150px; height: 150px;"></div><div class="skeleton" style="width: 100px; height: 14px; margin-top: 8px;"></div></div>
-                    <div class="scroll-card"><div class="skeleton" style="width: 150px; height: 150px;"></div><div class="skeleton" style="width: 120px; height: 14px; margin-top: 8px;"></div></div>
-                </div>
-            </div>
-
-            {% include 'search.html' %}
-            <div id="library-page" class="page-section"><h1 class="section-title">Your Library</h1></div>
-            <div id="premium-page" class="page-section"><h1 class="section-title">Premium</h1></div>
-            <div id="create-page" class="page-section"><h1 class="section-title">Create</h1></div>
-            <div class="bottom-spacer"></div>
-        </main>
-
-        <nav class="bottom-nav">
-            <div class="nav-item active" onclick="switchTab('home-page', this)"><i class="fas fa-home"></i><span>Home</span></div>
-            <div class="nav-item" onclick="switchTab('search-page', this)"><i class="fas fa-search"></i><span>Search</span></div>
-            <div class="nav-item" onclick="switchTab('library-page', this)"><i class="fas fa-swatchbook"></i><span>Your Library</span></div>
-            
-            {% if logged_in %}
-                <div class="nav-item" onclick="location.href='/logout'">
-                    <i class="fas fa-sign-out-alt" style="color: #ff4d4d;"></i>
-                    <span>Disconnect</span>
-                </div>
-            {% else %}
-                <div class="nav-item" onclick="location.href='/login'">
-                    <i class="fab fa-spotify" style="color: #1ed760;"></i>
-                    <span>Connect</span>
-                </div>
-            {% endif %}
-            
-            <div class="nav-item" onclick="switchTab('create-page', this)"><i class="fas fa-plus"></i><span>Create</span></div>
-        </nav>
+  <!-- ── TOP HEADER (Home only) ────────────────── -->
+  <header class="top-header" id="main-header">
+    <div class="profile-icon" title="{{ user_name or 'Profile' }}">
+      {% if user_image %}
+        <img src="{{ user_image }}" alt="{{ user_name }}">
+      {% else %}
+        {{ (user_name[0] | upper) if user_name else 'M' }}
+      {% endif %}
     </div>
+    <div class="header-filters">
+      <button class="filter-pill active">All</button>
+      <button class="filter-pill">Music</button>
+      <button class="filter-pill">Podcasts</button>
+    </div>
+  </header>
 
-    <script>
-        function switchTab(targetPageId, clickedButton) {
-            document.querySelectorAll('.page-section').forEach(page => page.classList.remove('active'));
-            document.querySelectorAll('.nav-item').forEach(btn => btn.classList.remove('active'));
-            document.getElementById(targetPageId).classList.add('active');
-            clickedButton.classList.add('active');
-            document.getElementById('main-header').style.display = (targetPageId === 'home-page') ? 'flex' : 'none';
-        }
+  <!-- ── MAIN CONTENT ──────────────────────────── -->
+  <main class="main-content">
 
-        // Home screen ke normal gaane lana (YouTube se)
-        async function fetchYouTubeMusic() {
-            try {
-                const response = await fetch('/api/home_music');
-                const data = await response.json();
-                
-                if(data.success) {
-                    const startContainer = document.getElementById('api-start-listening');
-                    startContainer.innerHTML = ''; 
-                    data.start_listening.forEach(song => {
-                        let title = song.title;
-                        let artist = song.artists ? song.artists.map(a => a.name).join(', ') : 'Unknown';
-                        let thumb = song.thumbnails && song.thumbnails.length > 0 ? song.thumbnails[song.thumbnails.length - 1].url : 'https://via.placeholder.com/55';
-                        startContainer.innerHTML += `<div class="list-item"><img src="${thumb}" alt="Cover" style="width: 55px; height: 55px; border-radius: 4px; object-fit: cover;"><div class="item-info"><div class="item-title">${title}</div><div class="item-subtitle">${artist}</div></div><i class="fas fa-ellipsis-v options-icon"></i></div>`;
-                    });
+    <!-- ════ HOME PAGE ════ -->
+    <div id="home-page" class="page-section active">
+      <p class="jump-text">Good {{ 'morning' if now_hour < 12 else ('afternoon' if now_hour < 17 else 'evening') }}, {{ user_name or 'music lover' }}</p>
 
-                    const recContainer = document.getElementById('api-recommended');
-                    recContainer.innerHTML = ''; 
-                    data.recommended.forEach(song => {
-                        let title = song.title;
-                        let thumb = song.thumbnails && song.thumbnails.length > 0 ? song.thumbnails[song.thumbnails.length - 1].url : 'https://via.placeholder.com/150';
-                        recContainer.innerHTML += `<div class="scroll-card"><img src="${thumb}" alt="Cover" style="width: 150px; height: 150px; border-radius: 8px; object-fit: cover;"><div class="card-title" style="margin-top: 8px; color: var(--text-subdued); font-size: 13px; font-weight: 500;">${title}</div></div>`;
-                    });
-                }
-            } catch (error) {
-                console.error("Music API Error:", error);
-            }
-        }
+      <!-- Made for You (logged-in only) -->
+      <div id="spotify-user-section" style="display:none;">
+        <h2 class="section-title">Made for You</h2>
+        <div class="horizontal-scroll" id="api-user-tracks"></div>
+      </div>
 
-        // NAYA FUNCTION: Logged in user ke personal Spotify gaane lana
-        async function fetchUserMusic() {
-            try {
-                const response = await fetch('/api/user_music');
-                const data = await response.json();
-                
-                if(data.success) {
-                    // Agar login hai, toh "Made for You" wala section dikhao
-                    document.getElementById('spotify-user-section').style.display = 'block';
-                    const container = document.getElementById('api-user-tracks');
-                    container.innerHTML = '';
-                    
-                    data.tracks.forEach(track => {
-                        container.innerHTML += `
-                            <div class="scroll-card">
-                                <img src="${track.thumb}" alt="Cover" style="width: 140px; height: 140px; border-radius: 8px; object-fit: cover;">
-                                <div class="card-title" style="font-size: 13px; font-weight: 500; margin-top: 8px; color: var(--text-subdued);">${track.title}</div>
-                            </div>
-                        `;
-                    });
-                }
-            } catch (error) {
-                console.error("User Music API Error:", error);
-            }
-        }
+      <!-- Recently Played (logged-in only) -->
+      <div id="recent-section" style="display:none;">
+        <h2 class="section-title">Recently Played</h2>
+        <div class="horizontal-scroll" id="api-recent-tracks"></div>
+      </div>
 
-        // Page load hone par dono functions chalana
-        document.addEventListener('DOMContentLoaded', () => {
-            fetchYouTubeMusic();
-            fetchUserMusic(); // Ye function automatically check karega user login hai ya nahi
-        });
-    </script>
+      <!-- New Releases -->
+      <h2 class="section-title">New Releases</h2>
+      <div class="list-container" id="api-start-listening">
+        {% for _ in range(5) %}
+        <div class="list-item skeleton-item">
+          <div class="skeleton" style="width:18px;height:14px;border-radius:2px;flex-shrink:0;"></div>
+          <div class="skeleton skeleton-thumb"></div>
+          <div class="item-info">
+            <div class="skeleton skeleton-line wide"></div>
+            <div class="skeleton skeleton-line narrow"></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Recommended Today -->
+      <h2 class="section-title">Recommended for Today</h2>
+      <div class="horizontal-scroll" id="api-recommended">
+        {% for _ in range(4) %}
+        <div class="scroll-card">
+          <div class="skeleton skeleton-card-img"></div>
+          <div class="skeleton skeleton-line wide" style="margin-top:8px;"></div>
+          <div class="skeleton skeleton-line narrow"></div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <!-- Trending India -->
+      <h2 class="section-title">Trending in India</h2>
+      <div class="list-container" id="api-trending">
+        {% for _ in range(4) %}
+        <div class="list-item skeleton-item">
+          <div class="skeleton" style="width:18px;height:14px;border-radius:2px;flex-shrink:0;"></div>
+          <div class="skeleton skeleton-thumb"></div>
+          <div class="item-info">
+            <div class="skeleton skeleton-line wide"></div>
+            <div class="skeleton skeleton-line narrow"></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+
+      <div class="bottom-spacer"></div>
+    </div>
+    <!-- ════ END HOME ════ -->
+
+
+    <!-- ════ SEARCH PAGE ════ -->
+    <div id="search-page" class="page-section">
+
+      <div class="search-header">
+        <div class="profile-icon" style="flex-shrink:0;">
+          {% if user_image %}
+            <img src="{{ user_image }}" alt="{{ user_name }}">
+          {% else %}
+            {{ (user_name[0] | upper) if user_name else 'M' }}
+          {% endif %}
+        </div>
+        <h1>Search</h1>
+      </div>
+
+      <div class="search-bar-wrap">
+        <div class="search-input-box">
+          <i class="fas fa-search"></i>
+          <input type="text" id="main-search-input"
+                 placeholder="Songs, artists, albums…"
+                 autocomplete="off" autocorrect="off" spellcheck="false">
+        </div>
+      </div>
+
+      <!-- Default browse UI -->
+      <div id="search-default-ui">
+        <h2 class="section-title" style="font-size:16px;margin-bottom:12px;">Browse categories</h2>
+        <div class="browse-grid">
+          <div class="browse-card" style="background:linear-gradient(135deg,#E13300,#ff6437);">
+            <h3>Music</h3>
+            <img src="https://i.scdn.co/image/ab6765630000ba8a81f07e1ead0317ee3c285bfa" alt="" onerror="this.style.display='none'">
+          </div>
+          <div class="browse-card" style="background:linear-gradient(135deg,#1E3264,#4a6cf7);">
+            <h3>Podcasts</h3>
+            <img src="https://i.scdn.co/image/ab6765630000ba8a81f07e1ead0317ee3c285bfa" alt="" onerror="this.style.display='none'">
+          </div>
+          <div class="browse-card" style="background:linear-gradient(135deg,#8D67AB,#c084fc);">
+            <h3>Live Events</h3>
+            <img src="https://i.scdn.co/image/ab6761610000e5eb8ae7f2aaa9817a704a87ea36" alt="" onerror="this.style.display='none'">
+          </div>
+          <div class="browse-card" style="background:linear-gradient(135deg,#E8115B,#f472b6);">
+            <h3>Hindi Pop</h3>
+            <img src="https://i.scdn.co/image/ab67706f000000020a76ce1e91ce86f2b740e53a" alt="" onerror="this.style.display='none'">
+          </div>
+          <div class="browse-card" style="background:linear-gradient(135deg,#148a08,#1ed760);">
+            <h3>Bollywood</h3>
+            <img src="" alt="" onerror="this.style.display='none'">
+          </div>
+          <div class="browse-card" style="background:linear-gradient(135deg,#bc5900,#f97316);">
+            <h3>Hip-Hop</h3>
+            <img src="" alt="" onerror="this.style.display='none'">
+          </div>
+        </div>
+      </div>
+
+      <!-- Search results -->
+      <div id="search-results-ui" style="display:none;">
+        <!-- Artists -->
+        <div id="artist-section" style="display:none;">
+          <h2 class="section-title" style="font-size:16px;margin-bottom:12px;">Artists</h2>
+          <div class="artist-grid" id="artist-results"></div>
+        </div>
+
+        <!-- Tracks -->
+        <h2 class="section-title" style="font-size:16px;margin-bottom:8px;">Songs</h2>
+        <div class="list-container" id="live-search-results"></div>
+      </div>
+
+      <div class="bottom-spacer"></div>
+    </div>
+    <!-- ════ END SEARCH ════ -->
+
+
+    <!-- ════ LIBRARY PAGE ════ -->
+    <div id="library-page" class="page-section">
+      <div class="library-header">
+        <h1 class="section-title" style="margin:0;">Your Library</h1>
+        {% if logged_in %}
+          <a href="/logout" style="font-size:12px;color:var(--text-subdued);padding:6px 12px;border:1px solid var(--text-faint);border-radius:999px;">
+            Disconnect
+          </a>
+        {% endif %}
+      </div>
+
+      {% if logged_in %}
+        <div class="list-container" id="library-content"></div>
+      {% else %}
+        <div class="library-empty">
+          <i class="fas fa-heart" style="font-size:52px;color:#535353;"></i>
+          <p style="color:var(--text-subdued);font-size:14px;margin-top:8px;">Connect Spotify to see your saved songs</p>
+          <a href="/login" class="btn-connect">
+            <i class="fab fa-spotify"></i> Connect with Spotify
+          </a>
+        </div>
+      {% endif %}
+
+      <div class="bottom-spacer"></div>
+    </div>
+    <!-- ════ END LIBRARY ════ -->
+
+  </main>
+  <!-- ── END MAIN ──────────────────────────────── -->
+
+  <!-- ── BOTTOM NAV ────────────────────────────── -->
+  <nav class="bottom-nav">
+    <button class="nav-item active" onclick="switchTab('home-page', this)">
+      <i class="fas fa-home"></i>
+      <span>Home</span>
+    </button>
+    <button class="nav-item" onclick="switchTab('search-page', this)">
+      <i class="fas fa-search"></i>
+      <span>Search</span>
+    </button>
+    <button class="nav-item" onclick="switchTab('library-page', this)">
+      <i class="fas fa-swatchbook"></i>
+      <span>Library</span>
+    </button>
+
+    {% if logged_in %}
+      <button class="nav-item" onclick="location.href='/logout'">
+        <i class="fas fa-sign-out-alt" style="color:#ff4d4d;"></i>
+        <span>Disconnect</span>
+      </button>
+    {% else %}
+      <button class="nav-item" onclick="location.href='/login'">
+        <i class="fab fa-spotify" style="color:#1ed760;"></i>
+        <span>Connect</span>
+      </button>
+    {% endif %}
+  </nav>
+
+</div>
+
+<script src="/static/js/app.js"></script>
 </body>
 </html>
