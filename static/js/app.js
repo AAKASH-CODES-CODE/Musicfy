@@ -224,7 +224,7 @@ function initSearch() {
             trackResults.innerHTML = `
               <div class="login-prompt">
                 <i class="fab fa-spotify"></i>
-                <p>Search karne ke liye Spotify connect karo</p>
+                <p>Please connect spotify to search</p>
                 <a href="/login" class="btn-connect">Connect Spotify</a>
               </div>`;
           } else {
