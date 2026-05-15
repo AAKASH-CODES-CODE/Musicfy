@@ -234,7 +234,7 @@ def _spotify_search(access_token, query, search_type, limit):
     return r.json()
 
 
-# --- YAHAN SE CHANGE HUA HAI (YouTube Music Search) ---
+# --- JIOSAAVN SEARCH API START ---
 @app.route("/api/search")
 def search_music():
     query = request.args.get("q", "").strip()
@@ -242,54 +242,55 @@ def search_music():
         return jsonify({"success": False, "error": "No query provided"})
 
     try:
-        # Pura search ab seedha YouTube Music se hoga (bina login ke chalega)
-        search_results = yt.search(query, limit=20)
-        
+        # JioSaavn ka Unofficial Autocomplete API
+        url = f"https://www.jiosaavn.com/api.php?__call=autocomplete.get&query={query}&_format=json&_marker=0&ctx=web6dot0"
+        response = req.get(url, timeout=8)
+        data = response.json()
+
         tracks = []
         artists = []
-        
-        for item in search_results:
-            result_type = item.get("resultType")
-            
-            # Gaano aur videos ko as a track dikhayenge
-            if result_type in ["song", "video"]:
-                thumbnails = item.get("thumbnails", [{"url": "https://via.placeholder.com/55"}])
-                thumb = thumbnails[-1]["url"] if thumbnails else "https://via.placeholder.com/55"
+
+        # 1. Gaane (Songs) nikalna
+        if "songs" in data and "data" in data["songs"]:
+            for song in data["songs"]["data"]:
+                # JioSaavn choti photo deta hai (50x50), hum use HD (500x500) me convert kar rahe hain
+                thumb = song.get("image", "").replace("50x50", "500x500")
                 
-                artists_list = item.get("artists", [])
-                artist_name = ", ".join(a["name"] for a in artists_list if "name" in a)
+                # HTML entities (jaise &quot;) ko theek karna
+                title = song.get("title", "").replace("&quot;", '"')
+                singers = song.get("more_info", {}).get("singers", "Unknown Artist")
                 
                 tracks.append({
-                    "title": item.get("title"),
-                    "artist": artist_name,
+                    "title": title,
+                    "artist": singers,
                     "thumb": thumb,
-                    "id": item.get("videoId"),
+                    "id": song.get("id"), # Ye ID aage Music Player me kaam aayegi
                     "type": "track"
                 })
-            
-            # Artists ko alag section me dikhayenge
-            elif result_type == "artist":
-                thumbnails = item.get("thumbnails", [{"url": "https://via.placeholder.com/100"}])
-                thumb = thumbnails[-1]["url"] if thumbnails else "https://via.placeholder.com/100"
-                
-                artists.append({
-                    "name": item.get("artist"),
-                    "thumb": thumb,
-                    "id": item.get("browseId"),
-                    "followers": 0,
-                    "type": "artist"
-                })
+
+        # 2. Artists nikalna (Agar kisi ne Arijit Singh search kiya)
+        if "topquery" in data and "data" in data["topquery"]:
+            for item in data["topquery"]["data"]:
+                if item.get("type") == "artist":
+                    thumb = item.get("image", "").replace("50x50", "500x500")
+                    artists.append({
+                        "name": item.get("title", "").replace("&quot;", '"'),
+                        "thumb": thumb,
+                        "id": item.get("id"),
+                        "followers": 0, # JioSaavn yahan followers count nahi deta
+                        "type": "artist"
+                    })
 
         return jsonify({
             "success": True,
-            "results": tracks[:15],  # Top 15 gaane
+            "results": tracks[:15],  # Top 15 results
             "artists": artists[:4]   # Top 4 artists
         })
 
     except Exception as e:
-        print(f"YT Search Error: {e}")
-        return jsonify({"success": False, "error": str(e)})
-# --- CHANGE YAHAN KHATAM ---
+        print(f"JioSaavn Search Error: {e}")
+        return jsonify({"success": False, "error": "Search API failed"})
+# --- JIOSAAVN SEARCH API END ---
 
 
 @app.route("/api/saved_tracks")
