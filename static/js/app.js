@@ -305,15 +305,12 @@ async function playSong(id, title, artist, thumb) {
   $('player-thumb').classList.remove('playing');
 
   try {
-    // JioSaavn ke gaane ka high-quality mp4 URL nikalne ke liye Public API
-    const res = await fetch(`https://saavn.dev/api/songs?ids=${id}`);
+    // Ab request direct browser se API par nahi, balki humare apne Backend par jayegi
+    const res = await fetch(`/api/get_audio?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`);
     const data = await res.json();
 
-    if (data.success && data.data.length > 0) {
-      const downloadLinks = data.data[0].downloadUrl;
-      const audioUrl = downloadLinks[downloadLinks.length - 1].url; // Highest Quality
-
-      currentAudio.src = audioUrl;
+    if (data.success && data.audio_url) {
+      currentAudio.src = data.audio_url;
       currentAudio.play();
       isPlaying = true;
 
@@ -321,15 +318,16 @@ async function playSong(id, title, artist, thumb) {
       $('play-icon').className = 'fas fa-pause';
       $('player-thumb').classList.add('playing');
     } else {
-      alert("Oops! Gaana load nahi ho paya.");
+      alert("Oops! Gaana nahi mil paya.");
       $('play-icon').className = 'fas fa-play';
     }
   } catch (err) {
     console.error("Audio Fetch Error:", err);
-    alert("Network error.");
+    alert("Server Error: Please try again.");
     $('play-icon').className = 'fas fa-play';
   }
 }
+
 
 // Play/Pause Button Logic
 function togglePlay() {
