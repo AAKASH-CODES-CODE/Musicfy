@@ -46,17 +46,15 @@ def search_music():
         return jsonify({"success": False, "error": "No query provided"})
     
     try:
-        # Spotify API se directly gaane search kar rahe hain
-        results = sp.search(q=query, limit=10, type='track')
+        # market='IN' lagane se Indian hits sabse upar aayenge!
+        results = sp.search(q=query, limit=10, type='track', market='IN')
         tracks = results['tracks']['items']
         
         cleaned_results = []
         for track in tracks:
-            # Spotify ke data ko apne format me set kar rahe hain
             title = track['name']
             artists = [{"name": artist['name']} for artist in track['artists']]
             
-            # Agar high quality image hai toh lo, warna placeholder
             if track['album']['images']:
                 thumb_url = track['album']['images'][0]['url']
             else:
@@ -66,7 +64,7 @@ def search_music():
                 "title": title,
                 "artists": artists,
                 "thumbnails": [{"url": thumb_url}],
-                "id": track['id'] # Future me gaana play karne ke liye aasan rahega
+                "id": track['id']
             })
             
         return jsonify({
