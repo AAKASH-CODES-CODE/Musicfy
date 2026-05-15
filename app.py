@@ -4,6 +4,7 @@ from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth
 import os
 import time
 import requests as req
+import re
 from datetime import datetime
 from dotenv import load_dotenv
 from ytmusicapi import YTMusic  # NAYA: YouTube Music import kiya
@@ -316,6 +317,7 @@ def saved_tracks():
         return jsonify({"success": True, "tracks": tracks})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
+
 # --- SMART AUDIO BRIDGE START ---
 @app.route("/api/get_audio")
 def get_audio():
@@ -325,7 +327,12 @@ def get_audio():
     if not title:
         return jsonify({"success": False, "error": "No title provided"})
         
-    query = f"{title} {artist}".strip()
+    # Clean title to remove brackets like (From "Movie") which break search
+    clean_title = re.sub(r'\(.*?\)|\[.*?\]', '', title).strip()
+    # Use only first artist name to simplify search
+    first_artist = artist.split(',')[0].strip() if artist else ""
+    
+    query = f"{clean_title} {first_artist}".strip()
     
     try:
         # Backend proxy: Browser ki jagah server gaana layega (Bypasses CORS & ID issues)
@@ -342,14 +349,22 @@ def get_audio():
                 audio_url = download_urls[-1]["url"]
                 return jsonify({"success": True, "audio_url": audio_url})
                 
+        # If specific search fails, try only title
+        search_url = f"https://saavn.dev/api/search/songs?query={clean_title}"
+        res = req.get(search_url, timeout=10).json()
+        if res.get("success") and res.get("data", {}).get("results"):
+            song = res["data"]["results"][0]
+            download_urls = song.get("downloadUrl", [])
+            if download_urls:
+                audio_url = download_urls[-1]["url"]
+                return jsonify({"success": True, "audio_url": audio_url})
+
         return jsonify({"success": False, "error": "Audio link not found"})
         
     except Exception as e:
         print(f"Audio Fetch Error: {e}")
         return jsonify({"success": False, "error": str(e)})
 # --- SMART AUDIO BRIDGE END ---
-
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
