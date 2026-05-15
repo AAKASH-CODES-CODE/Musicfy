@@ -75,36 +75,47 @@ def user_music():
 @app.route('/api/home_music')
 def home_music():
     try:
-        # 1. Start Listening (Bina country strict limit ke New Releases nikal rahe hain)
-        new_releases = sp_public.new_releases(limit=4)['albums']['items']
+        # ENGINE 1: Spotify Search (Ye sabse reliable hai)
+        trending = sp_public.search(q="top hits hindi", type='track', limit=4, market='IN')
         start_listening = []
-        for album in new_releases:
-            thumb = album['images'][0]['url'] if album['images'] else "https://via.placeholder.com/55"
+        for track in trending['tracks']['items']:
+            thumb = track['album']['images'][0]['url'] if track['album']['images'] else "https://via.placeholder.com/55"
             start_listening.append({
-                "title": album['name'],
-                "artists": [{"name": artist['name']} for artist in album['artists']],
+                "title": track['name'],
+                "artists": [{"name": artist['name']} for artist in track['artists']],
                 "thumbnails": [{"url": thumb}]
             })
-        
-        # 2. Recommended (Featured list ki jagah Top Hits direct search kar rahe hain, ye kabhi fail nahi hota)
-        top_playlists = sp_public.search(q="Top Hits Hindi", type="playlist", limit=4)['playlists']['items']
+            
+        playlists = sp_public.search(q="bollywood", type='playlist', limit=4, market='IN')
         recommended = []
-        for pl in top_playlists:
-            if pl is not None:
+        for pl in playlists['playlists']['items']:
+            if pl:
                 thumb = pl['images'][0]['url'] if pl['images'] else "https://via.placeholder.com/150"
                 recommended.append({
                     "title": pl['name'],
                     "thumbnails": [{"url": thumb}]
                 })
-        
+                
         return jsonify({
             "success": True,
             "start_listening": start_listening,
             "recommended": recommended
         })
-    except Exception as e:
-        return jsonify({"success": False, "error": str(e)})
-
+        
+    except Exception as e_spotify:
+        # ENGINE 2: Agar Spotify block kare, toh turant YouTube Music se data le aao (Fallback)
+        try:
+            charts = yt.get_charts(country='IN')
+            trending_videos = charts.get('videos', {}).get('items', [])[:4]
+            recommended_songs = yt.search("top hindi songs", filter="songs", limit=4)
+            
+            return jsonify({
+                "success": True,
+                "start_listening": trending_videos,
+                "recommended": recommended_songs
+            })
+        except Exception as e_yt:
+            return jsonify({"success": False, "error": str(e_yt)})
 @app.route('/api/search')
 def search_music():
     query = request.args.get('q')
