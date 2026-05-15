@@ -6,11 +6,14 @@ import time
 import requests as req
 from datetime import datetime
 from dotenv import load_dotenv
+from ytmusicapi import YTMusic  # NAYA: YouTube Music import kiya
 
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "change-this-to-a-random-secret")
+
+yt = YTMusic()  # NAYA: YouTube Music ko chalu kiya
 
 SPOTIFY_CLIENT_ID = os.environ.get("SPOTIFY_CLIENT_ID", "")
 SPOTIFY_CLIENT_SECRET = os.environ.get("SPOTIFY_CLIENT_SECRET", "")
@@ -169,8 +172,6 @@ def home_music():
         return jsonify({"success": False, "error": "Spotify not configured"})
 
     try:
-        # FIX: new_releases() is restricted — use album search instead
-        # market="US" must be explicit — spotipy sends market=None as string "None" which Spotify rejects
         album_results = sp.search(q="new album 2024", type="album", limit=8, market="US")
         start_listening = []
         for album in album_results["albums"]["items"]:
@@ -233,74 +234,62 @@ def _spotify_search(access_token, query, search_type, limit):
     return r.json()
 
 
+# --- YAHAN SE CHANGE HUA HAI (YouTube Music Search) ---
 @app.route("/api/search")
 def search_music():
     query = request.args.get("q", "").strip()
     if not query:
         return jsonify({"success": False, "error": "No query provided"})
 
-    # Spotify restricted search to OAuth tokens — need user to be logged in
-    token_info = session.get("token_info")
-    if not token_info:
+    try:
+        # Pura search ab seedha YouTube Music se hoga (bina login ke chalega)
+        search_results = yt.search(query, limit=20)
+        
+        tracks = []
+        artists = []
+        
+        for item in search_results:
+            result_type = item.get("resultType")
+            
+            # Gaano aur videos ko as a track dikhayenge
+            if result_type in ["song", "video"]:
+                thumbnails = item.get("thumbnails", [{"url": "https://via.placeholder.com/55"}])
+                thumb = thumbnails[-1]["url"] if thumbnails else "https://via.placeholder.com/55"
+                
+                artists_list = item.get("artists", [])
+                artist_name = ", ".join(a["name"] for a in artists_list if "name" in a)
+                
+                tracks.append({
+                    "title": item.get("title"),
+                    "artist": artist_name,
+                    "thumb": thumb,
+                    "id": item.get("videoId"),
+                    "type": "track"
+                })
+            
+            # Artists ko alag section me dikhayenge
+            elif result_type == "artist":
+                thumbnails = item.get("thumbnails", [{"url": "https://via.placeholder.com/100"}])
+                thumb = thumbnails[-1]["url"] if thumbnails else "https://via.placeholder.com/100"
+                
+                artists.append({
+                    "name": item.get("artist"),
+                    "thumb": thumb,
+                    "id": item.get("browseId"),
+                    "followers": 0,
+                    "type": "artist"
+                })
+
         return jsonify({
-            "success": False,
-            "login_required": True,
-            "error": "Please connect your Spotify account to search songs"
+            "success": True,
+            "results": tracks[:15],  # Top 15 gaane
+            "artists": artists[:4]   # Top 4 artists
         })
 
-    # Refresh token if expired
-    now = int(time.time())
-    if token_info.get("expires_at", 0) - now < 60:
-        sp_oauth = SpotifyOAuth(
-            client_id=SPOTIFY_CLIENT_ID,
-            client_secret=SPOTIFY_CLIENT_SECRET,
-            redirect_uri=REDIRECT_URI,
-            scope="user-library-read user-top-read user-read-recently-played"
-        )
-        try:
-            token_info = sp_oauth.refresh_access_token(token_info["refresh_token"])
-            session["token_info"] = token_info
-        except Exception:
-            session.clear()
-            return jsonify({"success": False, "login_required": True, "error": "Session expired, please reconnect"})
-
-    access_token = token_info["access_token"]
-
-    try:
-        track_data   = _spotify_search(access_token, query, "track", 15)
-        artist_data  = _spotify_search(access_token, query, "artist", 4)
-
-        tracks = []
-        for track in track_data.get("tracks", {}).get("items", []):
-            images = track["album"]["images"]
-            tracks.append({
-                "title":       track["name"],
-                "artist":      ", ".join(a["name"] for a in track["artists"]),
-                "thumb":       images[0]["url"] if images else "",
-                "id":          track["id"],
-                "duration_ms": track["duration_ms"],
-                "album":       track["album"]["name"],
-                "type":        "track"
-            })
-
-        artists = []
-        for artist in artist_data.get("artists", {}).get("items", []):
-            images = artist.get("images", [])
-            artists.append({
-                "name":      artist["name"],
-                "thumb":     images[0]["url"] if images else "",
-                "id":        artist["id"],
-                "followers": artist.get("followers", {}).get("total", 0),
-                "type":      "artist"
-            })
-
-        return jsonify({"success": True, "results": tracks, "artists": artists})
-
-    except req.exceptions.HTTPError as e:
-        code = e.response.status_code if e.response is not None else 0
-        return jsonify({"success": False, "error": f"Spotify API error {code}"})
     except Exception as e:
+        print(f"YT Search Error: {e}")
         return jsonify({"success": False, "error": str(e)})
+# --- CHANGE YAHAN KHATAM ---
 
 
 @app.route("/api/saved_tracks")
