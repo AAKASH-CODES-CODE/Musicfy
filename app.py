@@ -75,8 +75,8 @@ def user_music():
 @app.route('/api/home_music')
 def home_music():
     try:
-        # 1. Start Listening (Spotify New Releases in India)
-        new_releases = sp_public.new_releases(country='IN', limit=4)['albums']['items']
+        # 1. Start Listening (Bina country strict limit ke New Releases nikal rahe hain)
+        new_releases = sp_public.new_releases(limit=4)['albums']['items']
         start_listening = []
         for album in new_releases:
             thumb = album['images'][0]['url'] if album['images'] else "https://via.placeholder.com/55"
@@ -86,15 +86,16 @@ def home_music():
                 "thumbnails": [{"url": thumb}]
             })
         
-        # 2. Recommended (Spotify Featured Playlists in India)
-        featured = sp_public.featured_playlists(country='IN', limit=4)['playlists']['items']
+        # 2. Recommended (Featured list ki jagah Top Hits direct search kar rahe hain, ye kabhi fail nahi hota)
+        top_playlists = sp_public.search(q="Top Hits Hindi", type="playlist", limit=4)['playlists']['items']
         recommended = []
-        for pl in featured:
-            thumb = pl['images'][0]['url'] if pl['images'] else "https://via.placeholder.com/150"
-            recommended.append({
-                "title": pl['name'],
-                "thumbnails": [{"url": thumb}]
-            })
+        for pl in top_playlists:
+            if pl is not None:
+                thumb = pl['images'][0]['url'] if pl['images'] else "https://via.placeholder.com/150"
+                recommended.append({
+                    "title": pl['name'],
+                    "thumbnails": [{"url": thumb}]
+                })
         
         return jsonify({
             "success": True,
