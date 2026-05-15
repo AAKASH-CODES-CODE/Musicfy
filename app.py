@@ -1,4 +1,4 @@
-from flask import Flask, render_template, jsonify
+from flask import Flask, render_template, jsonify, request
 from ytmusicapi import YTMusic
 import os
 
@@ -21,6 +21,23 @@ def home_music():
             "success": True,
             "start_listening": trending_videos,
             "recommended": recommended_songs
+        })
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+# --- NAYA SEARCH API ROUTE ---
+@app.route('/api/search')
+def search_music():
+    query = request.args.get('q')
+    if not query:
+        return jsonify({"success": False, "error": "No query provided"})
+    
+    try:
+        # YouTube Music par gaane search karna
+        search_results = yt.search(query, filter="songs", limit=10)
+        return jsonify({
+            "success": True,
+            "results": search_results
         })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
