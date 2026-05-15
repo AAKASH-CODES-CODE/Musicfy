@@ -169,7 +169,8 @@ def home_music():
 
     try:
         # FIX: new_releases() is restricted — use album search instead
-        album_results = sp.search(q="new album 2024", type="album", limit=8)
+        # market="US" must be explicit — spotipy sends market=None as string "None" which Spotify rejects
+        album_results = sp.search(q="new album 2024", type="album", limit=8, market="US")
         start_listening = []
         for album in album_results["albums"]["items"]:
             images = album["images"]
@@ -182,7 +183,7 @@ def home_music():
                 "type": "album"
             })
 
-        playlist_results = sp.search(q="Top Hits Hindi India", type="playlist", limit=10)
+        playlist_results = sp.search(q="Top Hits Hindi India", type="playlist", limit=10, market="US")
         playlists = playlist_results["playlists"]["items"]
         recommended = []
         for pl in playlists:
@@ -197,8 +198,7 @@ def home_music():
                 "owner": pl["owner"]["display_name"]
             })
 
-        # FIX: removed market="IN" — causes 400 error
-        trending_results = sp.search(q="Bollywood hits 2024", type="track", limit=6)
+        trending_results = sp.search(q="Bollywood hits 2024", type="track", limit=6, market="US")
         trending = []
         for track in trending_results["tracks"]["items"]:
             images = track["album"]["images"]
@@ -231,9 +231,9 @@ def search_music():
         return jsonify({"success": False, "error": "Spotify not configured"})
 
     try:
-        # FIX: separate calls per type — avoids market=None 400 error
-        track_results = sp.search(q=query, limit=15, type="track")
-        artist_results = sp.search(q=query, limit=4, type="artist")
+        # market="US" must be explicit — spotipy sends market=None as string "None" which Spotify rejects with 400
+        track_results = sp.search(q=query, limit=15, type="track", market="US")
+        artist_results = sp.search(q=query, limit=4, type="artist", market="US")
 
         tracks = []
         for track in track_results["tracks"]["items"]:
