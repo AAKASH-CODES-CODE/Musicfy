@@ -601,3 +601,66 @@ a { color: inherit; text-decoration: none; }
   .skeleton-card-img { width: 120px; height: 120px; }
   .section-title { font-size: 20px; }
 }
+/* ── MUSIC PLAYER UI & ANIMATIONS ──────────────── */
+.music-player {
+  position: fixed;
+  top: 100vh; /* Shuru me screen se bahar neeche chupa hoga */
+  left: 0;
+  width: 100vw;
+  height: 100dvh;
+  background: linear-gradient(180deg, #2b2b2b 0%, #0d0d0d 100%);
+  z-index: 2000;
+  display: flex;
+  flex-direction: column;
+  padding: 30px 24px;
+  transition: top 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+.music-player.active {
+  top: 0; /* Active hone par screen par aayega */
+}
+
+/* Header */
+.player-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; }
+.now-playing-text { font-size: 11px; font-weight: 700; letter-spacing: 1px; color: var(--text-subdued); }
+.close-player, .options-player { font-size: 18px; color: #fff; padding: 10px; }
+
+/* Spinning Album Art (Vinyl Record Effect) */
+.album-art-container { display: flex; justify-content: center; margin-bottom: 40px; }
+.art-wrapper {
+  position: relative; width: 280px; height: 280px;
+  border-radius: 50%; box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+}
+.album-art {
+  width: 100%; height: 100%; border-radius: 50%; object-fit: cover;
+  animation: spin 8s linear infinite;
+  animation-play-state: paused; /* Shuru me ruka rahega */
+}
+.album-art.playing {
+  animation-play-state: running; /* Gaana bajne par ghumega */
+}
+.center-hole {
+  position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+  width: 40px; height: 40px; background: #0d0d0d; border-radius: 50%;
+  border: 4px solid #1a1a1a;
+}
+@keyframes spin { 100% { transform: rotate(360deg); } }
+
+/* Info & Progress */
+.player-info { text-align: center; margin-bottom: 30px; }
+#player-title { font-size: 24px; font-weight: 700; margin-bottom: 6px; }
+#player-artist { font-size: 15px; color: var(--text-subdued); }
+
+.progress-container { display: flex; align-items: center; gap: 12px; margin-bottom: 30px; }
+.time-text { font-size: 12px; color: var(--text-subdued); width: 35px; }
+.progress-bar-bg { flex: 1; height: 4px; background: #535353; border-radius: 4px; position: relative; overflow: hidden; }
+.progress-bar { width: 0%; height: 100%; background: var(--green); border-radius: 4px; transition: width 0.1s linear; }
+
+/* Controls */
+.player-controls { display: flex; justify-content: space-between; align-items: center; padding: 0 10px; }
+.ctrl-btn { font-size: 20px; color: var(--text-primary); opacity: 0.7; transition: 0.2s; }
+.ctrl-btn:hover { opacity: 1; }
+.play-pause-btn {
+  width: 65px; height: 65px; background: var(--green); border-radius: 50%;
+  display: flex; justify-content: center; align-items: center;
+  color: #000; font-size: 24px; box-shadow: 0 4px 12px rgba(30, 215, 96, 0.4);
+}
