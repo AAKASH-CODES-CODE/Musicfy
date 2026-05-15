@@ -33,7 +33,14 @@
         <main class="main-content">
             <div id="home-page" class="page-section active">
                 <p class="jump-text">Jump into a session based on your tastes</p>
-                <h1 class="section-title" style="margin-top: 4px; margin-bottom: 16px;">Start listening</h1>
+
+                <div id="spotify-user-section" style="display: none;">
+                    <h2 class="section-title" style="margin-top: 10px; margin-bottom: 16px;">Made for You</h2>
+                    <div class="horizontal-scroll" id="api-user-tracks">
+                        </div>
+                </div>
+
+                <h1 class="section-title" style="margin-top: 20px; margin-bottom: 16px;">Start listening</h1>
                 
                 <div class="list-container" id="api-start-listening">
                     <div class="list-item"><div class="skeleton" style="width: 55px; height: 55px;"></div><div class="item-info"><div class="skeleton" style="width: 60%; height: 16px; margin-bottom: 8px;"></div><div class="skeleton" style="width: 40%; height: 12px;"></div></div></div>
@@ -59,7 +66,12 @@
             <div class="nav-item active" onclick="switchTab('home-page', this)"><i class="fas fa-home"></i><span>Home</span></div>
             <div class="nav-item" onclick="switchTab('search-page', this)"><i class="fas fa-search"></i><span>Search</span></div>
             <div class="nav-item" onclick="switchTab('library-page', this)"><i class="fas fa-swatchbook"></i><span>Your Library</span></div>
-            <div class="nav-item" onclick="switchTab('premium-page', this)"><i class="fab fa-spotify"></i><span>Premium</span></div>
+            
+            <div class="nav-item" onclick="location.href='/login'">
+                <i class="fab fa-spotify" style="color: #1ed760;"></i>
+                <span>Connect</span>
+            </div>
+            
             <div class="nav-item" onclick="switchTab('create-page', this)"><i class="fas fa-plus"></i><span>Create</span></div>
         </nav>
     </div>
@@ -73,6 +85,7 @@
             document.getElementById('main-header').style.display = (targetPageId === 'home-page') ? 'flex' : 'none';
         }
 
+        // Home screen ke normal gaane lana (YouTube se)
         async function fetchYouTubeMusic() {
             try {
                 const response = await fetch('/api/home_music');
@@ -100,7 +113,38 @@
                 console.error("Music API Error:", error);
             }
         }
-        document.addEventListener('DOMContentLoaded', fetchYouTubeMusic);
+
+        // NAYA FUNCTION: Logged in user ke personal Spotify gaane lana
+        async function fetchUserMusic() {
+            try {
+                const response = await fetch('/api/user_music');
+                const data = await response.json();
+                
+                if(data.success) {
+                    // Agar login hai, toh "Made for You" wala section dikhao
+                    document.getElementById('spotify-user-section').style.display = 'block';
+                    const container = document.getElementById('api-user-tracks');
+                    container.innerHTML = '';
+                    
+                    data.tracks.forEach(track => {
+                        container.innerHTML += `
+                            <div class="scroll-card">
+                                <img src="${track.thumb}" alt="Cover" style="width: 140px; height: 140px; border-radius: 8px; object-fit: cover;">
+                                <div class="card-title" style="font-size: 13px; font-weight: 500; margin-top: 8px; color: var(--text-subdued);">${track.title}</div>
+                            </div>
+                        `;
+                    });
+                }
+            } catch (error) {
+                console.error("User Music API Error:", error);
+            }
+        }
+
+        // Page load hone par dono functions chalana
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchYouTubeMusic();
+            fetchUserMusic(); // Ye function automatically check karega user login hai ya nahi
+        });
     </script>
 </body>
 </html>
