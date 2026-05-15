@@ -9,9 +9,10 @@ app.secret_key = "musicfy-super-secret-key"
 
 yt = YTMusic()
 
-SPOTIFY_CLIENT_ID = os.environ.get('SPOTIPY_CLIENT_ID', '46ce8700cbcb4a739423feab1f207455')
-SPOTIFY_CLIENT_SECRET = os.environ.get('SPOTIPY_CLIENT_SECRET', 'aae5cab476fd44719ba0fdd3c0dac53f')
-# Aapka actual render link
+SPOTIFY_CLIENT_ID = '46ce8700cbcb4a739423feab1f207455'
+SPOTIFY_CLIENT_SECRET = 'aae5cab476fd44719ba0fdd3c0dac53f'
+
+# EXACT RENDER LINK (Isse login pakka kaam karega)
 REDIRECT_URI = 'https://musicfy-adze.onrender.com/callback'
 
 # Global Search ke liye Spotify
@@ -22,7 +23,6 @@ sp_public = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
 
 @app.route('/')
 def index():
-    # Frontend ko bata rahe hain ki user login hai ya nahi
     logged_in = "token_info" in session
     return render_template('index.html', logged_in=logged_in)
 
@@ -44,26 +44,29 @@ def callback():
     session["token_info"] = token_info
     return redirect(url_for('index'))
 
-# --- NAYA LOGOUT ROUTE ---
 @app.route('/logout')
 def logout():
-    session.clear() # User ka data memory se delete kar diya
+    session.clear() # User ko disconnect karne ke liye
     return redirect(url_for('index'))
 
 @app.route('/api/user_music')
 def user_music():
     if "token_info" not in session:
         return jsonify({"success": False, "message": "Not logged in"})
+    
     try:
         token_info = session.get("token_info")
         sp_user = spotipy.Spotify(auth=token_info['access_token'])
+        # User ke top 6 gaane
         results = sp_user.current_user_top_tracks(limit=6, time_range='short_term')
+        
         tracks = []
         for track in results['items']:
+            thumb = track['album']['images'][0]['url'] if track['album']['images'] else "https://via.placeholder.com/150"
             tracks.append({
                 "title": track['name'],
                 "artist": track['artists'][0]['name'],
-                "thumb": track['album']['images'][0]['url'] if track['album']['images'] else "https://via.placeholder.com/150"
+                "thumb": thumb
             })
         return jsonify({"success": True, "tracks": tracks})
     except Exception as e:
@@ -75,6 +78,7 @@ def home_music():
         charts = yt.get_charts(country='IN')
         trending_videos = charts.get('videos', {}).get('items', [])[:4]
         recommended_songs = yt.search("haryanvi pop hits", filter="songs", limit=4)
+        
         return jsonify({
             "success": True,
             "start_listening": trending_videos,
@@ -83,27 +87,31 @@ def home_music():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
-# --- FIX KIYA HUA SEARCH ROUTE ---
 @app.route('/api/search')
 def search_music():
     query = request.args.get('q')
     if not query:
         return jsonify({"success": False, "error": "No query provided"})
+    
     try:
+        # PURA SEARCH LOGIC (Ab kachra result nahi aayega)
         results = sp_public.search(q=query, limit=10, type='track', market='IN')
         tracks = results['tracks']['items']
+        
         cleaned_results = []
         for track in tracks:
-            title = track['name']
-            artists = [{"name": artist['name']} for artist in track['artists']]
-            thumb_url = track['album']['images'][0]['url'] if track['album']['images'] else "https://via.placeholder.com/55"
+            thumb = track['album']['images'][0]['url'] if track['album']['images'] else "https://via.placeholder.com/55"
             cleaned_results.append({
-                "title": title,
-                "artists": artists,
-                "thumbnails": [{"url": thumb_url}],
+                "title": track['name'],
+                "artists": [{"name": artist['name']} for artist in track['artists']],
+                "thumbnails": [{"url": thumb}],
                 "id": track['id']
             })
-        return jsonify({"success": True, "results": cleaned_results})
+            
+        return jsonify({
+            "success": True,
+            "results": cleaned_results
+        })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
