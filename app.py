@@ -1,9 +1,22 @@
 from flask import Flask, render_template, jsonify, request
 from ytmusicapi import YTMusic
+import spotipy
+from spotipy.oauth2 import SpotifyClientCredentials
 import os
 
 app = Flask(__name__)
+
+# YouTube API (Home screen ke gaano ke liye)
 yt = YTMusic()
+
+# Spotify API (Super-Accurate Search ke liye)
+SPOTIFY_CLIENT_ID = os.environ.get('SPOTIPY_CLIENT_ID', '46ce8700cbcb4a739423feab1f207455')
+SPOTIFY_CLIENT_SECRET = os.environ.get('SPOTIPY_CLIENT_SECRET', 'aae5cab476fd44719ba0fdd3c0dac53f')
+
+sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
+    client_id=SPOTIFY_CLIENT_ID,
+    client_secret=SPOTIFY_CLIENT_SECRET
+))
 
 @app.route('/')
 def index():
@@ -12,7 +25,7 @@ def index():
 @app.route('/api/home_music')
 def home_music():
     try:
-        # Trending aur Recommended gaane fetch karna
+        # Trending aur Recommended gaane fetch karna (YouTube se)
         charts = yt.get_charts(country='IN')
         trending_videos = charts.get('videos', {}).get('items', [])[:4]
         recommended_songs = yt.search("haryanvi pop hits", filter="songs", limit=4)
@@ -25,8 +38,7 @@ def home_music():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
-# --- NAYA SEARCH API ROUTE ---
-# --- NAYA SEARCH API ROUTE ---
+# --- NAYA SPOTIFY SEARCH API ROUTE ---
 @app.route('/api/search')
 def search_music():
     query = request.args.get('q')
@@ -34,18 +46,36 @@ def search_music():
         return jsonify({"success": False, "error": "No query provided"})
     
     try:
-        # Yahan se filter="songs" hata diya gaya hai taaki real hits (Music Videos) bhi aayen
-        raw_results = yt.search(query, limit=15)
+        # Spotify API se directly gaane search kar rahe hain
+        results = sp.search(q=query, limit=10, type='track')
+        tracks = results['tracks']['items']
         
-        # Kachra (Artists, Albums, Playlists) hata kar sirf Songs aur Videos rakh rahe hain
-        search_results = [res for res in raw_results if res.get('resultType') in ['song', 'video']]
-        
+        cleaned_results = []
+        for track in tracks:
+            # Spotify ke data ko apne format me set kar rahe hain
+            title = track['name']
+            artists = [{"name": artist['name']} for artist in track['artists']]
+            
+            # Agar high quality image hai toh lo, warna placeholder
+            if track['album']['images']:
+                thumb_url = track['album']['images'][0]['url']
+            else:
+                thumb_url = "https://via.placeholder.com/55"
+                
+            cleaned_results.append({
+                "title": title,
+                "artists": artists,
+                "thumbnails": [{"url": thumb_url}],
+                "id": track['id'] # Future me gaana play karne ke liye aasan rahega
+            })
+            
         return jsonify({
             "success": True,
-            "results": search_results[:10] # Top 10 best matching results bhejeinge
+            "results": cleaned_results
         })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
+
 if __name__ == '__main__':
     # Cloud automatically apna port assign karega
     port = int(os.environ.get('PORT', 5000))
