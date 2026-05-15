@@ -7,13 +7,14 @@ import requests as req
 import re
 from datetime import datetime
 from dotenv import load_dotenv
-from ytmusicapi import YTMusic  # NAYA: YouTube Music import kiya
+from ytmusicapi import YTMusic  # YouTube Music API
 
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "change-this-to-a-random-secret")
 
+# YTMusic instance
 yt = YTMusic(location="IN")
 
 SPOTIFY_CLIENT_ID = os.environ.get("SPOTIFY_CLIENT_ID", "")
@@ -235,7 +236,7 @@ def _spotify_search(access_token, query, search_type, limit):
     return r.json()
 
 
-# --- JIOSAAVN SEARCH API START ---
+# --- YOUTUBE MUSIC SEARCH API START ---
 @app.route("/api/search")
 def search_music():
     query = request.args.get("q", "").strip()
@@ -243,55 +244,54 @@ def search_music():
         return jsonify({"success": False, "error": "No query provided"})
 
     try:
-        # JioSaavn ka Unofficial Autocomplete API
-        url = f"https://www.jiosaavn.com/api.php?__call=autocomplete.get&query={query}&_format=json&_marker=0&ctx=web6dot0"
-        response = req.get(url, timeout=8)
-        data = response.json()
-
+        # Pura search ab seedha YouTube Music se hoga (bina login ke chalega)
+        search_results = yt.search(query, limit=20)
+        
         tracks = []
         artists = []
-
-        # 1. Gaane (Songs) nikalna
-        if "songs" in data and "data" in data["songs"]:
-            for song in data["songs"]["data"]:
-                # JioSaavn choti photo deta hai (50x50), hum use HD (500x500) me convert kar rahe hain
-                thumb = song.get("image", "").replace("50x50", "500x500")
+        
+        for item in search_results:
+            result_type = item.get("resultType")
+            
+            # Gaano aur videos ko as a track dikhayenge
+            if result_type in ["song", "video"]:
+                thumbnails = item.get("thumbnails", [{"url": "https://via.placeholder.com/55"}])
+                thumb = thumbnails[-1]["url"] if thumbnails else "https://via.placeholder.com/55"
                 
-                # HTML entities (jaise &quot;) ko theek karna
-                title = song.get("title", "").replace("&quot;", '"')
-                singers = song.get("more_info", {}).get("singers", "Unknown Artist")
+                artists_list = item.get("artists", [])
+                artist_name = ", ".join(a["name"] for a in artists_list if "name" in a)
                 
                 tracks.append({
-                    "title": title,
-                    "artist": singers,
+                    "title": item.get("title"),
+                    "artist": artist_name,
                     "thumb": thumb,
-                    "id": song.get("id"), # Ye ID aage Music Player me kaam aayegi
+                    "id": item.get("videoId"),
                     "type": "track"
                 })
-
-        # 2. Artists nikalna (Agar kisi ne Arijit Singh search kiya)
-        if "topquery" in data and "data" in data["topquery"]:
-            for item in data["topquery"]["data"]:
-                if item.get("type") == "artist":
-                    thumb = item.get("image", "").replace("50x50", "500x500")
-                    artists.append({
-                        "name": item.get("title", "").replace("&quot;", '"'),
-                        "thumb": thumb,
-                        "id": item.get("id"),
-                        "followers": 0, # JioSaavn yahan followers count nahi deta
-                        "type": "artist"
-                    })
+            
+            # Artists ko alag section me dikhayenge
+            elif result_type == "artist":
+                thumbnails = item.get("thumbnails", [{"url": "https://via.placeholder.com/100"}])
+                thumb = thumbnails[-1]["url"] if thumbnails else "https://via.placeholder.com/100"
+                
+                artists.append({
+                    "name": item.get("artist"),
+                    "thumb": thumb,
+                    "id": item.get("browseId"),
+                    "followers": 0,
+                    "type": "artist"
+                })
 
         return jsonify({
             "success": True,
-            "results": tracks[:15],  # Top 15 results
+            "results": tracks[:15],  # Top 15 gaane
             "artists": artists[:4]   # Top 4 artists
         })
 
     except Exception as e:
-        print(f"JioSaavn Search Error: {e}")
-        return jsonify({"success": False, "error": "Search API failed"})
-# --- JIOSAAVN SEARCH API END ---
+        print(f"YT Search Error: {e}")
+        return jsonify({"success": False, "error": str(e)})
+# --- YOUTUBE MUSIC SEARCH API END ---
 
 
 @app.route("/api/saved_tracks")
@@ -318,7 +318,9 @@ def saved_tracks():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
-# --- SMART AUDIO BRIDGE START ---
+# --- SMART AUDIO BRIDGE START (NOW USING YT-DLP) ---
+import yt_dlp
+
 @app.route("/api/get_audio")
 def get_audio():
     title = request.args.get("title", "")
@@ -329,38 +331,30 @@ def get_audio():
         
     # Clean title to remove brackets like (From "Movie") which break search
     clean_title = re.sub(r'\(.*?\)|\[.*?\]', '', title).strip()
-    # Use only first artist name to simplify search
     first_artist = artist.split(',')[0].strip() if artist else ""
     
     query = f"{clean_title} {first_artist}".strip()
     
-    try:
-        # Backend proxy: Browser ki jagah server gaana layega (Bypasses CORS & ID issues)
-        search_url = f"https://saavn.dev/api/search/songs?query={query}"
-        res = req.get(search_url, timeout=10).json()
-        
-        if res.get("success") and res.get("data", {}).get("results"):
-            # Pehla result pakdo
-            song = res["data"]["results"][0]
-            download_urls = song.get("downloadUrl", [])
-            
-            if download_urls:
-                # Sabse high quality (last item) wala link nikalo
-                audio_url = download_urls[-1]["url"]
-                return jsonify({"success": True, "audio_url": audio_url})
-                
-        # If specific search fails, try only title
-        search_url = f"https://saavn.dev/api/search/songs?query={clean_title}"
-        res = req.get(search_url, timeout=10).json()
-        if res.get("success") and res.get("data", {}).get("results"):
-            song = res["data"]["results"][0]
-            download_urls = song.get("downloadUrl", [])
-            if download_urls:
-                audio_url = download_urls[-1]["url"]
-                return jsonify({"success": True, "audio_url": audio_url})
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'noplaylist': True,
+        'quiet': True,
+        'default_search': 'ytsearch',
+        'extract_flat': False
+    }
 
-        return jsonify({"success": False, "error": "Audio link not found"})
-        
+    try:
+        # Pura backend search ab yt-dlp ke through hoga
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            # Hum ytsearch1 use kar rahe hain matlab sirf 1st result layega
+            info = ydl.extract_info(f"ytsearch1:{query}", download=False)
+            
+            if 'entries' in info and len(info['entries']) > 0:
+                audio_url = info['entries'][0]['url']
+                return jsonify({"success": True, "audio_url": audio_url})
+            else:
+                return jsonify({"success": False, "error": "Audio link not found"})
+
     except Exception as e:
         print(f"Audio Fetch Error: {e}")
         return jsonify({"success": False, "error": str(e)})
