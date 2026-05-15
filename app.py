@@ -1,127 +1,296 @@
 from flask import Flask, render_template, jsonify, request, redirect, session, url_for
-from ytmusicapi import YTMusic
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials, SpotifyOAuth
 import os
+import time
+from datetime import datetime
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = "musicfy-super-secret-key"
+app.secret_key = os.environ.get("FLASK_SECRET_KEY", "change-this-to-a-random-secret")
 
-yt = YTMusic()
+SPOTIFY_CLIENT_ID = os.environ.get("SPOTIFY_CLIENT_ID", "")
+SPOTIFY_CLIENT_SECRET = os.environ.get("SPOTIFY_CLIENT_SECRET", "")
+REDIRECT_URI = os.environ.get("REDIRECT_URI", "http://localhost:5000/callback")
 
-# Aapki IDs jo pehle se kaam kar rahi thi
-SPOTIFY_CLIENT_ID = '46ce8700cbcb4a739423feab1f207455'
-SPOTIFY_CLIENT_SECRET = 'aae5cab476fd44719ba0fdd3c0dac53f'
-REDIRECT_URI = 'https://musicfy-adze.onrender.com/callback'
+def get_public_client():
+    try:
+        return spotipy.Spotify(auth_manager=SpotifyClientCredentials(
+            client_id=SPOTIFY_CLIENT_ID,
+            client_secret=SPOTIFY_CLIENT_SECRET
+        ))
+    except Exception:
+        return None
 
-# Public client for search and home page (Bina login ke)
-sp_public = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
-    client_id=SPOTIFY_CLIENT_ID,
-    client_secret=SPOTIFY_CLIENT_SECRET
-))
+def get_user_client():
+    token_info = session.get("token_info")
+    if not token_info:
+        return None
 
-@app.route('/')
+    now = int(time.time())
+    is_expired = token_info.get("expires_at", 0) - now < 60
+
+    if is_expired:
+        sp_oauth = SpotifyOAuth(
+            client_id=SPOTIFY_CLIENT_ID,
+            client_secret=SPOTIFY_CLIENT_SECRET,
+            redirect_uri=REDIRECT_URI,
+            scope="user-library-read user-top-read user-read-recently-played"
+        )
+        try:
+            token_info = sp_oauth.refresh_access_token(token_info["refresh_token"])
+            session["token_info"] = token_info
+        except Exception:
+            session.clear()
+            return None
+
+    return spotipy.Spotify(auth=token_info["access_token"])
+
+
+@app.route("/")
 def index():
     logged_in = "token_info" in session
-    return render_template('index.html', logged_in=logged_in)
+    user_name = session.get("user_name", "")
+    user_image = session.get("user_image", "")
+    now_hour = datetime.now().hour
+    return render_template("index.html", logged_in=logged_in, user_name=user_name,
+                           user_image=user_image, now_hour=now_hour)
 
-@app.route('/login')
+
+@app.route("/login")
 def login():
-    scope = "user-library-read user-top-read"
-    sp_oauth = SpotifyOAuth(client_id=SPOTIFY_CLIENT_ID, client_secret=SPOTIFY_CLIENT_SECRET, 
-                            redirect_uri=REDIRECT_URI, scope=scope)
-    auth_url = sp_oauth.get_authorize_url()
-    return redirect(auth_url)
+    sp_oauth = SpotifyOAuth(
+        client_id=SPOTIFY_CLIENT_ID,
+        client_secret=SPOTIFY_CLIENT_SECRET,
+        redirect_uri=REDIRECT_URI,
+        scope="user-library-read user-top-read user-read-recently-played"
+    )
+    return redirect(sp_oauth.get_authorize_url())
 
-@app.route('/callback')
+
+@app.route("/callback")
 def callback():
-    sp_oauth = SpotifyOAuth(client_id=SPOTIFY_CLIENT_ID, client_secret=SPOTIFY_CLIENT_SECRET, 
-                            redirect_uri=REDIRECT_URI)
-    session.clear()
-    code = request.args.get('code')
-    token_info = sp_oauth.get_access_token(code)
-    session["token_info"] = token_info
-    return redirect(url_for('index'))
+    error = request.args.get("error")
+    if error:
+        return redirect(url_for("index"))
 
-@app.route('/logout')
+    code = request.args.get("code")
+    if not code:
+        return redirect(url_for("index"))
+
+    sp_oauth = SpotifyOAuth(
+        client_id=SPOTIFY_CLIENT_ID,
+        client_secret=SPOTIFY_CLIENT_SECRET,
+        redirect_uri=REDIRECT_URI,
+        scope="user-library-read user-top-read user-read-recently-played"
+    )
+    session.clear()
+    try:
+        token_info = sp_oauth.get_access_token(code)
+        session["token_info"] = token_info
+
+        sp_user = spotipy.Spotify(auth=token_info["access_token"])
+        profile = sp_user.current_user()
+        session["user_name"] = profile.get("display_name", "User")
+        images = profile.get("images", [])
+        session["user_image"] = images[0]["url"] if images else ""
+    except Exception:
+        pass
+
+    return redirect(url_for("index"))
+
+
+@app.route("/logout")
 def logout():
     session.clear()
-    return redirect(url_for('index'))
+    return redirect(url_for("index"))
 
-# 1. MADE FOR YOU SECTION (User's personal songs)
-@app.route('/api/user_music')
+
+@app.route("/api/user_music")
 def user_music():
-    if "token_info" not in session:
+    sp = get_user_client()
+    if not sp:
         return jsonify({"success": False, "message": "Not logged in"})
+
     try:
-        token_info = session.get("token_info")
-        sp_user = spotipy.Spotify(auth=token_info['access_token'])
-        results = sp_user.current_user_top_tracks(limit=6, time_range='short_term')
+        results = sp.current_user_top_tracks(limit=8, time_range="short_term")
         tracks = []
-        for track in results['items']:
-            thumb = track['album']['images'][0]['url'] if track['album']['images'] else "https://via.placeholder.com/150"
+        for track in results["items"]:
+            images = track["album"]["images"]
+            thumb = images[0]["url"] if images else ""
             tracks.append({
-                "title": track['name'],
-                "artist": track['artists'][0]['name'],
-                "thumb": thumb
+                "title": track["name"],
+                "artist": ", ".join(a["name"] for a in track["artists"]),
+                "thumb": thumb,
+                "id": track["id"],
+                "duration_ms": track["duration_ms"],
+                "album": track["album"]["name"]
             })
         return jsonify({"success": True, "tracks": tracks})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
-# 2. HOME PAGE (New Releases & Recommended Playlists)
-@app.route('/api/home_music')
-def home_music():
+
+@app.route("/api/recent_tracks")
+def recent_tracks():
+    sp = get_user_client()
+    if not sp:
+        return jsonify({"success": False, "message": "Not logged in"})
+
     try:
-        # Start Listening: Spotify New Releases
-        releases = sp_public.new_releases(limit=6)['albums']['items']
+        results = sp.current_user_recently_played(limit=6)
+        tracks = []
+        seen = set()
+        for item in results["items"]:
+            track = item["track"]
+            if track["id"] in seen:
+                continue
+            seen.add(track["id"])
+            images = track["album"]["images"]
+            thumb = images[0]["url"] if images else ""
+            tracks.append({
+                "title": track["name"],
+                "artist": ", ".join(a["name"] for a in track["artists"]),
+                "thumb": thumb,
+                "id": track["id"]
+            })
+        return jsonify({"success": True, "tracks": tracks})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+
+@app.route("/api/home_music")
+def home_music():
+    sp = get_public_client()
+    if not sp:
+        return jsonify({"success": False, "error": "Spotify not configured"})
+
+    try:
+        releases = sp.new_releases(limit=8, country="IN")["albums"]["items"]
         start_listening = []
         for album in releases:
-            thumb = album['images'][0]['url'] if album['images'] else "https://via.placeholder.com/55"
+            images = album["images"]
+            thumb = images[0]["url"] if images else ""
             start_listening.append({
-                "title": album['name'],
-                "artists": [{"name": artist['name']} for artist in album['artists']],
-                "thumbnails": [{"url": thumb}]
+                "title": album["name"],
+                "artist": ", ".join(a["name"] for a in album["artists"]),
+                "thumb": thumb,
+                "id": album["id"],
+                "type": "album"
             })
-        
-        # Recommended: Popular Playlists Search
-        playlists = sp_public.search(q="Top Hits Hindi", type='playlist', limit=10)['playlists']['items']
+
+        playlist_results = sp.search(q="Top Hits India 2024", type="playlist", limit=10)
+        playlists = playlist_results["playlists"]["items"]
         recommended = []
         for pl in playlists:
-            if pl:
-                thumb = pl['images'][0]['url'] if pl['images'] else "https://via.placeholder.com/150"
-                recommended.append({
-                    "title": pl['name'],
-                    "thumbnails": [{"url": thumb}]
-                })
-        
-        return jsonify({"success": True, "start_listening": start_listening, "recommended": recommended})
+            if not pl:
+                continue
+            images = pl.get("images", [])
+            thumb = images[0]["url"] if images else ""
+            recommended.append({
+                "title": pl["name"],
+                "thumb": thumb,
+                "id": pl["id"],
+                "owner": pl["owner"]["display_name"]
+            })
+
+        trending_results = sp.search(q="Bollywood hits 2024", type="track", limit=6, market="IN")
+        trending = []
+        for track in trending_results["tracks"]["items"]:
+            images = track["album"]["images"]
+            thumb = images[0]["url"] if images else ""
+            trending.append({
+                "title": track["name"],
+                "artist": ", ".join(a["name"] for a in track["artists"]),
+                "thumb": thumb,
+                "id": track["id"]
+            })
+
+        return jsonify({
+            "success": True,
+            "start_listening": start_listening,
+            "recommended": recommended,
+            "trending": trending
+        })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
-# 3. SEARCH (Spotify Global Search)
-@app.route('/api/search')
+
+@app.route("/api/search")
 def search_music():
-    query = request.args.get('q')
+    query = request.args.get("q", "").strip()
     if not query:
         return jsonify({"success": False, "error": "No query provided"})
+
+    sp = get_public_client()
+    if not sp:
+        return jsonify({"success": False, "error": "Spotify not configured"})
+
     try:
-        # Market filter hata diya taaki 'Nature' jaise keywords par zyada results milein
-        results = sp_public.search(q=query, limit=15, type='track')
-        tracks = results['tracks']['items']
-        cleaned_results = []
-        for track in tracks:
-            thumb = track['album']['images'][0]['url'] if track['album']['images'] else "https://via.placeholder.com/55"
-            cleaned_results.append({
-                "title": track['name'],
-                "artists": [{"name": artist['name']} for artist in track['artists']],
-                "thumbnails": [{"url": thumb}],
-                "id": track['id']
+        results = sp.search(q=query, limit=20, type="track,artist,album")
+
+        tracks = []
+        for track in results["tracks"]["items"]:
+            images = track["album"]["images"]
+            thumb = images[0]["url"] if images else ""
+            tracks.append({
+                "title": track["name"],
+                "artist": ", ".join(a["name"] for a in track["artists"]),
+                "thumb": thumb,
+                "id": track["id"],
+                "duration_ms": track["duration_ms"],
+                "album": track["album"]["name"],
+                "type": "track"
             })
-        return jsonify({"success": True, "results": cleaned_results})
+
+        artists = []
+        for artist in results.get("artists", {}).get("items", [])[:4]:
+            images = artist.get("images", [])
+            thumb = images[0]["url"] if images else ""
+            artists.append({
+                "name": artist["name"],
+                "thumb": thumb,
+                "id": artist["id"],
+                "followers": artist.get("followers", {}).get("total", 0),
+                "type": "artist"
+            })
+
+        return jsonify({
+            "success": True,
+            "results": tracks,
+            "artists": artists
+        })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
-if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(host='0.0.0.0', port=port)
+
+@app.route("/api/saved_tracks")
+def saved_tracks():
+    sp = get_user_client()
+    if not sp:
+        return jsonify({"success": False, "message": "Not logged in"})
+    try:
+        results = sp.current_user_saved_tracks(limit=20)
+        tracks = []
+        for item in results["items"]:
+            track = item["track"]
+            images = track["album"]["images"]
+            thumb = images[0]["url"] if images else ""
+            tracks.append({
+                "title": track["name"],
+                "artist": ", ".join(a["name"] for a in track["artists"]),
+                "thumb": thumb,
+                "id": track["id"],
+                "duration_ms": track["duration_ms"],
+                "album": track["album"]["name"]
+            })
+        return jsonify({"success": True, "tracks": tracks})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False)
