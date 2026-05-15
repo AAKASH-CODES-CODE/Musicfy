@@ -26,6 +26,7 @@ def home_music():
         return jsonify({"success": False, "error": str(e)})
 
 # --- NAYA SEARCH API ROUTE ---
+# --- NAYA SEARCH API ROUTE ---
 @app.route('/api/search')
 def search_music():
     query = request.args.get('q')
@@ -33,15 +34,18 @@ def search_music():
         return jsonify({"success": False, "error": "No query provided"})
     
     try:
-        # YouTube Music par gaane search karna
-        search_results = yt.search(query, filter="songs", limit=10)
+        # Yahan se filter="songs" hata diya gaya hai taaki real hits (Music Videos) bhi aayen
+        raw_results = yt.search(query, limit=15)
+        
+        # Kachra (Artists, Albums, Playlists) hata kar sirf Songs aur Videos rakh rahe hain
+        search_results = [res for res in raw_results if res.get('resultType') in ['song', 'video']]
+        
         return jsonify({
             "success": True,
-            "results": search_results
+            "results": search_results[:10] # Top 10 best matching results bhejeinge
         })
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
-
 if __name__ == '__main__':
     # Cloud automatically apna port assign karega
     port = int(os.environ.get('PORT', 5000))
