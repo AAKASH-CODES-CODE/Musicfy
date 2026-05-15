@@ -67,10 +67,17 @@
             <div class="nav-item" onclick="switchTab('search-page', this)"><i class="fas fa-search"></i><span>Search</span></div>
             <div class="nav-item" onclick="switchTab('library-page', this)"><i class="fas fa-swatchbook"></i><span>Your Library</span></div>
             
-            <div class="nav-item" onclick="location.href='/login'">
-                <i class="fab fa-spotify" style="color: #1ed760;"></i>
-                <span>Connect</span>
-            </div>
+            {% if logged_in %}
+                <div class="nav-item" onclick="location.href='/logout'">
+                    <i class="fas fa-sign-out-alt" style="color: #ff4d4d;"></i>
+                    <span>Disconnect</span>
+                </div>
+            {% else %}
+                <div class="nav-item" onclick="location.href='/login'">
+                    <i class="fab fa-spotify" style="color: #1ed760;"></i>
+                    <span>Connect</span>
+                </div>
+            {% endif %}
             
             <div class="nav-item" onclick="switchTab('create-page', this)"><i class="fas fa-plus"></i><span>Create</span></div>
         </nav>
