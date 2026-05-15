@@ -168,9 +168,10 @@ def home_music():
         return jsonify({"success": False, "error": "Spotify not configured"})
 
     try:
-        releases = sp.new_releases(limit=8, country="IN")["albums"]["items"]
+        # FIX: new_releases() is restricted — use album search instead
+        album_results = sp.search(q="new album 2024", type="album", limit=8)
         start_listening = []
-        for album in releases:
+        for album in album_results["albums"]["items"]:
             images = album["images"]
             thumb = images[0]["url"] if images else ""
             start_listening.append({
@@ -181,7 +182,7 @@ def home_music():
                 "type": "album"
             })
 
-        playlist_results = sp.search(q="Top Hits India 2024", type="playlist", limit=10)
+        playlist_results = sp.search(q="Top Hits Hindi India", type="playlist", limit=10)
         playlists = playlist_results["playlists"]["items"]
         recommended = []
         for pl in playlists:
@@ -196,7 +197,8 @@ def home_music():
                 "owner": pl["owner"]["display_name"]
             })
 
-        trending_results = sp.search(q="Bollywood hits 2024", type="track", limit=6, market="IN")
+        # FIX: removed market="IN" — causes 400 error
+        trending_results = sp.search(q="Bollywood hits 2024", type="track", limit=6)
         trending = []
         for track in trending_results["tracks"]["items"]:
             images = track["album"]["images"]
@@ -229,10 +231,12 @@ def search_music():
         return jsonify({"success": False, "error": "Spotify not configured"})
 
     try:
-        results = sp.search(q=query, limit=20, type="track,artist,album")
+        # FIX: separate calls per type — avoids market=None 400 error
+        track_results = sp.search(q=query, limit=15, type="track")
+        artist_results = sp.search(q=query, limit=4, type="artist")
 
         tracks = []
-        for track in results["tracks"]["items"]:
+        for track in track_results["tracks"]["items"]:
             images = track["album"]["images"]
             thumb = images[0]["url"] if images else ""
             tracks.append({
@@ -246,7 +250,7 @@ def search_music():
             })
 
         artists = []
-        for artist in results.get("artists", {}).get("items", [])[:4]:
+        for artist in artist_results["artists"]["items"]:
             images = artist.get("images", [])
             thumb = images[0]["url"] if images else ""
             artists.append({
