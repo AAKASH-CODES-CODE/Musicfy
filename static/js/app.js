@@ -1,5 +1,5 @@
 /* =============================================
-   MUSICFY — Main Application Script
+   MUSICFY — Main Application Script (YouTube Edition)
    ============================================= */
 
 const $ = id => document.getElementById(id);
@@ -293,7 +293,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 
-// ── MUSIC PLAYER LOGIC ────────────────────────────
+// ── MUSIC PLAYER LOGIC (YOUTUBE AUDIO BRIDGE) ────────────────────────────
 let currentAudio = new Audio();
 let isPlaying = false;
 
@@ -313,7 +313,7 @@ async function playSong(id, title, artist, thumb) {
   $('player-thumb').classList.remove('playing');
 
   try {
-    // Ab request direct browser se API par nahi, balki humare apne Backend par jayegi
+    // Ab backend se seedha YouTube ka high-quality audio stream aayega
     const res = await fetch(`/api/get_audio?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`);
     const data = await res.json();
 
@@ -326,7 +326,7 @@ async function playSong(id, title, artist, thumb) {
       $('play-icon').className = 'fas fa-pause';
       $('player-thumb').classList.add('playing');
     } else {
-      alert("Oops! Gaana nahi mil paya.");
+      alert("Oops! YouTube se gaana nahi mil paya.");
       $('play-icon').className = 'fas fa-play';
     }
   } catch (err) {
