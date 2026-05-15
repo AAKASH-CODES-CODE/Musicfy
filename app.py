@@ -226,12 +226,17 @@ def search_music():
     if not query:
         return jsonify({"success": False, "error": "No query provided"})
 
-    sp = get_public_client()
+    # Spotify restricted track/artist search to OAuth tokens only (late 2024 API change)
+    # Use user token if logged in, otherwise ask them to connect
+    sp = get_user_client()
     if not sp:
-        return jsonify({"success": False, "error": "Spotify not configured"})
+        return jsonify({
+            "success": False,
+            "login_required": True,
+            "error": "Please connect your Spotify account to search songs"
+        })
 
     try:
-        # market="US" must be explicit — spotipy sends market=None as string "None" which Spotify rejects with 400
         track_results = sp.search(q=query, limit=15, type="track", market="US")
         artist_results = sp.search(q=query, limit=4, type="artist", market="US")
 
