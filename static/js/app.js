@@ -220,7 +220,16 @@ function initSearch() {
         const data = await res.json();
 
         if (!data.success) {
-          trackResults.innerHTML = '<p class="error-msg">Search failed. Try again.</p>';
+          if (data.login_required) {
+            trackResults.innerHTML = `
+              <div class="login-prompt">
+                <i class="fab fa-spotify"></i>
+                <p>Search karne ke liye Spotify connect karo</p>
+                <a href="/login" class="btn-connect">Connect Spotify</a>
+              </div>`;
+          } else {
+            trackResults.innerHTML = '<p class="error-msg">Search failed. Try again.</p>';
+          }
           return;
         }
 
