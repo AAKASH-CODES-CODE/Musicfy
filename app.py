@@ -9,13 +9,12 @@ app.secret_key = "musicfy-super-secret-key"
 
 yt = YTMusic()
 
+# Aapki IDs jo pehle se kaam kar rahi thi
 SPOTIFY_CLIENT_ID = '46ce8700cbcb4a739423feab1f207455'
 SPOTIFY_CLIENT_SECRET = 'aae5cab476fd44719ba0fdd3c0dac53f'
-
-# EXACT RENDER LINK (Isse login pakka kaam karega)
 REDIRECT_URI = 'https://musicfy-adze.onrender.com/callback'
 
-# Global Search ke liye Spotify
+# Public client for search and home page (Bina login ke)
 sp_public = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
     client_id=SPOTIFY_CLIENT_ID,
     client_secret=SPOTIFY_CLIENT_SECRET
@@ -46,20 +45,18 @@ def callback():
 
 @app.route('/logout')
 def logout():
-    session.clear() # User ko disconnect karne ke liye
+    session.clear()
     return redirect(url_for('index'))
 
+# 1. MADE FOR YOU SECTION (User's personal songs)
 @app.route('/api/user_music')
 def user_music():
     if "token_info" not in session:
         return jsonify({"success": False, "message": "Not logged in"})
-    
     try:
         token_info = session.get("token_info")
         sp_user = spotipy.Spotify(auth=token_info['access_token'])
-        # User ke top 6 gaane
         results = sp_user.current_user_top_tracks(limit=6, time_range='short_term')
-        
         tracks = []
         for track in results['items']:
             thumb = track['album']['images'][0]['url'] if track['album']['images'] else "https://via.placeholder.com/150"
@@ -72,61 +69,46 @@ def user_music():
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
+# 2. HOME PAGE (New Releases & Recommended Playlists)
 @app.route('/api/home_music')
 def home_music():
     try:
-        # ENGINE 1: Spotify Search (Ye sabse reliable hai)
-        trending = sp_public.search(q="top hits hindi", type='track', limit=4, market='IN')
+        # Start Listening: Spotify New Releases
+        releases = sp_public.new_releases(limit=6)['albums']['items']
         start_listening = []
-        for track in trending['tracks']['items']:
-            thumb = track['album']['images'][0]['url'] if track['album']['images'] else "https://via.placeholder.com/55"
+        for album in releases:
+            thumb = album['images'][0]['url'] if album['images'] else "https://via.placeholder.com/55"
             start_listening.append({
-                "title": track['name'],
-                "artists": [{"name": artist['name']} for artist in track['artists']],
+                "title": album['name'],
+                "artists": [{"name": artist['name']} for artist in album['artists']],
                 "thumbnails": [{"url": thumb}]
             })
-            
-        playlists = sp_public.search(q="bollywood", type='playlist', limit=4, market='IN')
+        
+        # Recommended: Popular Playlists Search
+        playlists = sp_public.search(q="Top Hits Hindi", type='playlist', limit=10)['playlists']['items']
         recommended = []
-        for pl in playlists['playlists']['items']:
+        for pl in playlists:
             if pl:
                 thumb = pl['images'][0]['url'] if pl['images'] else "https://via.placeholder.com/150"
                 recommended.append({
                     "title": pl['name'],
                     "thumbnails": [{"url": thumb}]
                 })
-                
-        return jsonify({
-            "success": True,
-            "start_listening": start_listening,
-            "recommended": recommended
-        })
         
-    except Exception as e_spotify:
-        # ENGINE 2: Agar Spotify block kare, toh turant YouTube Music se data le aao (Fallback)
-        try:
-            charts = yt.get_charts(country='IN')
-            trending_videos = charts.get('videos', {}).get('items', [])[:4]
-            recommended_songs = yt.search("top hindi songs", filter="songs", limit=4)
-            
-            return jsonify({
-                "success": True,
-                "start_listening": trending_videos,
-                "recommended": recommended_songs
-            })
-        except Exception as e_yt:
-            return jsonify({"success": False, "error": str(e_yt)})
+        return jsonify({"success": True, "start_listening": start_listening, "recommended": recommended})
+    except Exception as e:
+        return jsonify({"success": False, "error": str(e)})
+
+# 3. SEARCH (Spotify Global Search)
 @app.route('/api/search')
 def search_music():
     query = request.args.get('q')
     if not query:
         return jsonify({"success": False, "error": "No query provided"})
-    
     try:
-        # PURA SEARCH LOGIC (Ab kachra result nahi aayega)
-        results = sp_public.search(q=query, limit=10, type='track', market='IN')
+        # Market filter hata diya taaki 'Nature' jaise keywords par zyada results milein
+        results = sp_public.search(q=query, limit=15, type='track')
         tracks = results['tracks']['items']
-        
         cleaned_results = []
         for track in tracks:
             thumb = track['album']['images'][0]['url'] if track['album']['images'] else "https://via.placeholder.com/55"
@@ -136,11 +118,7 @@ def search_music():
                 "thumbnails": [{"url": thumb}],
                 "id": track['id']
             })
-            
-        return jsonify({
-            "success": True,
-            "results": cleaned_results
-        })
+        return jsonify({"success": True, "results": cleaned_results})
     except Exception as e:
         return jsonify({"success": False, "error": str(e)})
 
