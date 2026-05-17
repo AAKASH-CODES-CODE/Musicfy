@@ -1,5 +1,5 @@
 /* =============================================
-   MUSICFY — Main Application Script (YouTube Edition)
+   MUSICFY — Main Application Script (Fixed)
    ============================================= */
 
 const $ = id => document.getElementById(id);
@@ -53,9 +53,9 @@ function skeletonCards(count = 4) {
 // ── Track list item HTML ───────────────────────
 function trackListItem(track, index) {
   const dur = track.duration_ms ? formatDuration(track.duration_ms) : '';
-  // Title aur artist me quotes handle karne ke liye
-  const safeTitle = (track.title || '').replace(/'/g, "\\'").replace(/"/g, '\\"');
-  const safeArtist = (track.artist || '').replace(/'/g, "\\'").replace(/"/g, '\\"');
+  // Safe escaping for quotes
+  const safeTitle = (track.title || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+  const safeArtist = (track.artist || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
 
   return `
     <div class="list-item" onclick="playSong('${track.id}', '${safeTitle}', '${safeArtist}', '${track.thumb}')">
@@ -76,11 +76,9 @@ function trackListItem(track, index) {
 function scrollCard(item) {
   const sub = item.artist || item.owner || '';
   
-  // Quotes handle karne ke liye
-  const safeTitle = (item.title || item.name || '').replace(/'/g, "\\'").replace(/"/g, '\\"');
-  const safeArtist = (item.artist || '').replace(/'/g, "\\'").replace(/"/g, '\\"');
+  const safeTitle = (item.title || item.name || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
+  const safeArtist = (item.artist || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/"/g, '\\"');
   
-  // Agar item me artist hai (matlab song hai), tabhi click par play hoga
   const clickAction = item.artist ? `onclick="playSong('${item.id}', '${safeTitle}', '${safeArtist}', '${item.thumb}')"` : '';
 
   return `
@@ -193,6 +191,7 @@ async function loadLibrary() {
 
     container.innerHTML = data.tracks.map((t, i) => trackListItem(t, i)).join('');
   } catch (err) {
+    console.error('Library load error:', err);
     container.innerHTML = '<p class="error-msg">Could not load library.</p>';
   }
 }
@@ -232,16 +231,7 @@ function initSearch() {
         const data = await res.json();
 
         if (!data.success) {
-          if (data.login_required) {
-            trackResults.innerHTML = `
-              <div class="login-prompt">
-                <i class="fab fa-spotify"></i>
-                <p>Please connect spotify to search</p>
-                <a href="/login" class="btn-connect">Connect Spotify</a>
-              </div>`;
-          } else {
-            trackResults.innerHTML = '<p class="error-msg">Search failed. Try again.</p>';
-          }
+          trackResults.innerHTML = `<p class="error-msg">Search failed: ${data.error || 'Try again'}</p>`;
           return;
         }
 
@@ -268,6 +258,7 @@ function initSearch() {
         }
 
       } catch (err) {
+        console.error('Search error:', err);
         trackResults.innerHTML = '<p class="error-msg">Network error. Try again.</p>';
       }
     }, 300);
@@ -293,59 +284,116 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 
-// ── MUSIC PLAYER LOGIC (YOUTUBE AUDIO BRIDGE) ────────────────────────────
+// ── MUSIC PLAYER LOGIC (FIXED & IMPROVED) ────────────────────────────
 let currentAudio = new Audio();
 let isPlaying = false;
+let currentPlayingSongId = null;
 
 function togglePlayer() {
   $('music-player').classList.toggle('active');
 }
 
 async function playSong(id, title, artist, thumb) {
-  // Player ko upar laao aur details set karo
+  // Prevent double-clicking
+  if (currentPlayingSongId === id && isPlaying) return;
+  
+  // Update UI
   $('music-player').classList.add('active');
   $('player-title').innerText = title;
   $('player-artist').innerText = artist;
   $('player-thumb').src = thumb;
   
-  // Spinner chalu karo loading ke time
-  $('play-icon').className = 'fas fa-spinner fa-spin';
+  // Show loading spinner
+  const playBtn = $('play-icon');
+  playBtn.className = 'fas fa-spinner fa-spin';
   $('player-thumb').classList.remove('playing');
 
   try {
-    // Ab backend se seedha YouTube ka high-quality audio stream aayega
-    const res = await fetch(`/api/get_audio?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`);
+    // Fetch audio from backend with timeout
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+    
+    const res = await fetch(
+      `/api/get_audio?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`,
+      { signal: controller.signal }
+    );
+    
+    clearTimeout(timeoutId);
     const data = await res.json();
 
     if (data.success && data.audio_url) {
+      // Stop previous playback
+      currentAudio.pause();
+      currentAudio.src = '';
+      
+      // Set new song
       currentAudio.src = data.audio_url;
-      currentAudio.play();
-      isPlaying = true;
-
-      // Play icon aur spinning animation chalu
-      $('play-icon').className = 'fas fa-pause';
-      $('player-thumb').classList.add('playing');
+      currentAudio.crossOrigin = "anonymous";
+      
+      // Play
+      currentAudio.play().then(() => {
+        isPlaying = true;
+        currentPlayingSongId = id;
+        playBtn.className = 'fas fa-pause';
+        $('player-thumb').classList.add('playing');
+      }).catch(err => {
+        console.error('Play error:', err);
+        showPlayerError('Could not play audio. Try another song.');
+        playBtn.className = 'fas fa-play';
+      });
+      
     } else {
-      alert("Oops! YouTube se gaana nahi mil paya.");
-      $('play-icon').className = 'fas fa-play';
+      showPlayerError(data.error || "Song not found on YouTube");
+      playBtn.className = 'fas fa-play';
     }
   } catch (err) {
     console.error("Audio Fetch Error:", err);
-    alert("Server Error: Please try again.");
-    $('play-icon').className = 'fas fa-play';
+    if (err.name === 'AbortError') {
+      showPlayerError('Request timeout. Please try again.');
+    } else {
+      showPlayerError('Network error. Please try again.');
+    }
+    playBtn.className = 'fas fa-play';
   }
 }
 
+function showPlayerError(msg) {
+  const errorDiv = document.createElement('div');
+  errorDiv.className = 'player-error-toast';
+  errorDiv.innerText = msg;
+  errorDiv.style.cssText = `
+    position: fixed;
+    bottom: 100px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #e74c3c;
+    color: white;
+    padding: 12px 20px;
+    border-radius: 8px;
+    font-size: 14px;
+    z-index: 1000;
+    animation: slideUp 0.3s ease;
+  `;
+  document.body.appendChild(errorDiv);
+  setTimeout(() => errorDiv.remove(), 4000);
+}
 
 // Play/Pause Button Logic
 function togglePlay() {
-  if (!currentAudio.src) return;
+  if (!currentAudio.src) {
+    showPlayerError('No song loaded');
+    return;
+  }
+  
   if (isPlaying) {
     currentAudio.pause();
     $('play-icon').className = 'fas fa-play';
     $('player-thumb').classList.remove('playing');
   } else {
-    currentAudio.play();
+    currentAudio.play().catch(err => {
+      console.error('Play error:', err);
+      showPlayerError('Could not resume playback');
+    });
     $('play-icon').className = 'fas fa-pause';
     $('player-thumb').classList.add('playing');
   }
@@ -358,15 +406,29 @@ currentAudio.addEventListener('timeupdate', () => {
     const progressPercent = (currentAudio.currentTime / currentAudio.duration) * 100;
     $('progress-bar').style.width = `${progressPercent}%`;
     
-    // Time format update
+    // Current time
     let currentMin = Math.floor(currentAudio.currentTime / 60);
     let currentSec = Math.floor(currentAudio.currentTime % 60);
-    if(currentSec < 10) currentSec = `0${currentSec}`;
-    $('current-time').innerText = `${currentMin}:${currentSec}`;
+    $('current-time').innerText = `${currentMin}:${currentSec.toString().padStart(2, '0')}`;
 
+    // Total time
     let totalMin = Math.floor(currentAudio.duration / 60);
     let totalSec = Math.floor(currentAudio.duration % 60);
-    if(totalSec < 10) totalSec = `0${totalSec}`;
-    $('total-time').innerText = `${totalMin}:${totalSec}`;
+    $('total-time').innerText = `${totalMin}:${totalSec.toString().padStart(2, '0')}`;
   }
+});
+
+// Handle audio end
+currentAudio.addEventListener('ended', () => {
+  isPlaying = false;
+  $('play-icon').className = 'fas fa-play';
+  $('player-thumb').classList.remove('playing');
+});
+
+// Handle audio errors
+currentAudio.addEventListener('error', (e) => {
+  console.error('Audio error:', e);
+  showPlayerError('Failed to load audio stream');
+  $('play-icon').className = 'fas fa-play';
+  isPlaying = false;
 });
