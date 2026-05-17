@@ -315,63 +315,56 @@ def saved_tracks():
         return jsonify({"success": False, "error": str(e)})
 
 
-# --- SMART AUDIO BRIDGE (FIXED) ---
+# --- SMART AUDIO BRIDGE START (ANTI-BOT SAFE) ---
 @app.route("/api/get_audio")
 def get_audio():
-    title = request.args.get("title", "").strip()
-    artist = request.args.get("artist", "").strip()
+    title = request.args.get("title", "")
+    artist = request.args.get("artist", "")
     
     if not title:
         return jsonify({"success": False, "error": "No title provided"})
-    
-    # Clean title - remove brackets and extra info
-    clean_title = re.sub(r'\(.*?\)|\[.*?\]|\{.*?\}', '', title).strip()
+        
+    # Ye filter brackets () hata dega taaki JioSaavn confuse na ho
+    clean_title = re.sub(r'\(.*?\)|\[.*?\]', '', title).strip()
     first_artist = artist.split(',')[0].strip() if artist else ""
     
-    # Build search query
-    query = f"{clean_title}".strip()
-    if first_artist and first_artist.lower() not in clean_title.lower():
-        query = f"{clean_title} {first_artist}"
+    query = f"{clean_title} {first_artist}".strip()
     
-    logger.info(f"Searching for: {query}")
-    
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'noplaylist': True,
-        'quiet': True,
-        'no_warnings': True,
-        'default_search': 'ytsearch',
-        'socket_timeout': 30,
-        'extract_flat': False,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-    }
-
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Search for the song
-            info = ydl.extract_info(f"ytsearch1:{query}", download=False)
+        # Pura backend search ab JioSaavn API se hoga jo Bot block nahi karta
+        search_url = f"https://saavn.dev/api/search/songs?query={query}"
+        res = req.get(search_url, timeout=10).json()
+        
+        if res.get("success") and res.get("data", {}).get("results"):
+            # Pehla result pakdo
+            song = res["data"]["results"][0]
+            download_urls = song.get("downloadUrl", [])
             
-            if 'entries' in info and len(info['entries']) > 0:
-                video_info = info['entries'][0]
-                audio_url = video_info.get('url')
+            if download_urls:
+                # Sabse high quality (last item) wala link nikalo
+                audio_url = download_urls[-1]["url"]
+                logger.info(f"Found JioSaavn audio URL for: {query}")
+                return jsonify({"success": True, "audio_url": audio_url})
                 
-                if audio_url:
-                    logger.info(f"Found audio URL for: {query}")
-                    return jsonify({
-                        "success": True,
-                        "audio_url": audio_url,
-                        "title": video_info.get('title', title)
-                    })
-                else:
-                    logger.warning(f"No audio URL found in info for: {query}")
-                    return jsonify({"success": False, "error": "Could not extract audio URL"})
-            else:
-                logger.warning(f"No video found for: {query}")
-                return jsonify({"success": False, "error": "No results found for this song"})
+        # Agar specific search fail ho jaye, toh sirf title se try karo
+        search_url = f"https://saavn.dev/api/search/songs?query={clean_title}"
+        res = req.get(search_url, timeout=10).json()
+        if res.get("success") and res.get("data", {}).get("results"):
+            song = res["data"]["results"][0]
+            download_urls = song.get("downloadUrl", [])
+            if download_urls:
+                audio_url = download_urls[-1]["url"]
+                logger.info(f"Found fallback audio URL for: {clean_title}")
+                return jsonify({"success": True, "audio_url": audio_url})
 
+        logger.warning(f"No audio link found on JioSaavn for: {query}")
+        return jsonify({"success": False, "error": "Audio link not found"})
+        
     except Exception as e:
-        logger.error(f"Audio Fetch Error: {str(e)}")
-        return jsonify({"success": False, "error": f"Failed to fetch audio: {str(e)}"})
+        logger.error(f"Audio Fetch Error: {e}")
+        return jsonify({"success": False, "error": str(e)})
+# --- SMART AUDIO BRIDGE END ---
+
 
 
 # Error handlers
