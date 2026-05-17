@@ -7,9 +7,15 @@ import requests as req
 import re
 from datetime import datetime
 from dotenv import load_dotenv
-from ytmusicapi import YTMusic  # YouTube Music API
+from ytmusicapi import YTMusic
+import yt_dlp
+import logging
 
 load_dotenv()
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "change-this-to-a-random-secret")
@@ -102,7 +108,8 @@ def callback():
         session["user_name"] = profile.get("display_name", "User")
         images = profile.get("images", [])
         session["user_image"] = images[0]["url"] if images else ""
-    except Exception:
+    except Exception as e:
+        logger.error(f"Callback error: {e}")
         pass
 
     return redirect(url_for("index"))
@@ -136,6 +143,7 @@ def user_music():
             })
         return jsonify({"success": True, "tracks": tracks})
     except Exception as e:
+        logger.error(f"User music error: {e}")
         return jsonify({"success": False, "error": str(e)})
 
 
@@ -164,6 +172,7 @@ def recent_tracks():
             })
         return jsonify({"success": True, "tracks": tracks})
     except Exception as e:
+        logger.error(f"Recent tracks error: {e}")
         return jsonify({"success": False, "error": str(e)})
 
 
@@ -221,22 +230,11 @@ def home_music():
             "trending": trending
         })
     except Exception as e:
+        logger.error(f"Home music error: {e}")
         return jsonify({"success": False, "error": str(e)})
 
 
-def _spotify_search(access_token, query, search_type, limit):
-    """Direct HTTP call to Spotify — bypasses spotipy quirks completely."""
-    r = req.get(
-        "https://api.spotify.com/v1/search",
-        params={"q": query, "type": search_type, "limit": limit, "market": "US"},
-        headers={"Authorization": f"Bearer {access_token}"},
-        timeout=8
-    )
-    r.raise_for_status()
-    return r.json()
-
-
-# --- YOUTUBE MUSIC SEARCH API START ---
+# --- SEARCH API (YouTube Music + JioSaavn) ---
 @app.route("/api/search")
 def search_music():
     query = request.args.get("q", "").strip()
@@ -244,7 +242,7 @@ def search_music():
         return jsonify({"success": False, "error": "No query provided"})
 
     try:
-        # Pura search ab seedha YouTube Music se hoga (bina login ke chalega)
+        # YouTube Music search
         search_results = yt.search(query, limit=20)
         
         tracks = []
@@ -253,7 +251,6 @@ def search_music():
         for item in search_results:
             result_type = item.get("resultType")
             
-            # Gaano aur videos ko as a track dikhayenge
             if result_type in ["song", "video"]:
                 thumbnails = item.get("thumbnails", [{"url": "https://via.placeholder.com/55"}])
                 thumb = thumbnails[-1]["url"] if thumbnails else "https://via.placeholder.com/55"
@@ -269,7 +266,6 @@ def search_music():
                     "type": "track"
                 })
             
-            # Artists ko alag section me dikhayenge
             elif result_type == "artist":
                 thumbnails = item.get("thumbnails", [{"url": "https://via.placeholder.com/100"}])
                 thumb = thumbnails[-1]["url"] if thumbnails else "https://via.placeholder.com/100"
@@ -284,14 +280,13 @@ def search_music():
 
         return jsonify({
             "success": True,
-            "results": tracks[:15],  # Top 15 gaane
-            "artists": artists[:4]   # Top 4 artists
+            "results": tracks[:15],
+            "artists": artists[:4]
         })
 
     except Exception as e:
-        print(f"YT Search Error: {e}")
+        logger.error(f"YT Search Error: {e}")
         return jsonify({"success": False, "error": str(e)})
-# --- YOUTUBE MUSIC SEARCH API END ---
 
 
 @app.route("/api/saved_tracks")
@@ -316,51 +311,80 @@ def saved_tracks():
             })
         return jsonify({"success": True, "tracks": tracks})
     except Exception as e:
+        logger.error(f"Saved tracks error: {e}")
         return jsonify({"success": False, "error": str(e)})
 
-# --- SMART AUDIO BRIDGE START (NOW USING YT-DLP) ---
-import yt_dlp
 
+# --- SMART AUDIO BRIDGE (FIXED) ---
 @app.route("/api/get_audio")
 def get_audio():
-    title = request.args.get("title", "")
-    artist = request.args.get("artist", "")
+    title = request.args.get("title", "").strip()
+    artist = request.args.get("artist", "").strip()
     
     if not title:
         return jsonify({"success": False, "error": "No title provided"})
-        
-    # Clean title to remove brackets like (From "Movie") which break search
-    clean_title = re.sub(r'\(.*?\)|\[.*?\]', '', title).strip()
+    
+    # Clean title - remove brackets and extra info
+    clean_title = re.sub(r'\(.*?\)|\[.*?\]|\{.*?\}', '', title).strip()
     first_artist = artist.split(',')[0].strip() if artist else ""
     
-    query = f"{clean_title} {first_artist}".strip()
+    # Build search query
+    query = f"{clean_title}".strip()
+    if first_artist and first_artist.lower() not in clean_title.lower():
+        query = f"{clean_title} {first_artist}"
+    
+    logger.info(f"Searching for: {query}")
     
     ydl_opts = {
         'format': 'bestaudio/best',
         'noplaylist': True,
         'quiet': True,
+        'no_warnings': True,
         'default_search': 'ytsearch',
-        'extract_flat': False
+        'socket_timeout': 30,
+        'extract_flat': False,
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
     }
 
     try:
-        # Pura backend search ab yt-dlp ke through hoga
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # Hum ytsearch1 use kar rahe hain matlab sirf 1st result layega
+            # Search for the song
             info = ydl.extract_info(f"ytsearch1:{query}", download=False)
             
             if 'entries' in info and len(info['entries']) > 0:
-                audio_url = info['entries'][0]['url']
-                return jsonify({"success": True, "audio_url": audio_url})
+                video_info = info['entries'][0]
+                audio_url = video_info.get('url')
+                
+                if audio_url:
+                    logger.info(f"Found audio URL for: {query}")
+                    return jsonify({
+                        "success": True,
+                        "audio_url": audio_url,
+                        "title": video_info.get('title', title)
+                    })
+                else:
+                    logger.warning(f"No audio URL found in info for: {query}")
+                    return jsonify({"success": False, "error": "Could not extract audio URL"})
             else:
-                return jsonify({"success": False, "error": "Audio link not found"})
+                logger.warning(f"No video found for: {query}")
+                return jsonify({"success": False, "error": "No results found for this song"})
 
     except Exception as e:
-        print(f"Audio Fetch Error: {e}")
-        return jsonify({"success": False, "error": str(e)})
-# --- SMART AUDIO BRIDGE END ---
+        logger.error(f"Audio Fetch Error: {str(e)}")
+        return jsonify({"success": False, "error": f"Failed to fetch audio: {str(e)}"})
+
+
+# Error handlers
+@app.errorhandler(404)
+def not_found(e):
+    return jsonify({"success": False, "error": "Not found"}), 404
+
+@app.errorhandler(500)
+def server_error(e):
+    logger.error(f"Server error: {e}")
+    return jsonify({"success": False, "error": "Server error"}), 500
+
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=False)
-
